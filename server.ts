@@ -10,8 +10,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { createApp } from './server/app';
 import { getConfig } from './server/config';
-import { resumeProviderPreviewJobs } from './server/routes/voiceAdditionalSources';
-import { resumeSourceValidationJobs } from './server/routes/voiceSourceLifecycle';
+import { recoverJobsOnBoot, shutdownActiveJobs } from './server/jobs/runner';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,9 +24,8 @@ async function startServer() {
   app.get('/api/ping', (_req, res) => {
     res.json({ service: 'semovix-voice-studio' });
   });
-  // 试听任务的状态已经持久化；启动时恢复因重启中断的 Provider 任务。
-  void resumeProviderPreviewJobs().catch(error => console.error('无法恢复 Provider 试听任务:', error));
-  void resumeSourceValidationJobs().catch(error => console.error('无法恢复来源验证任务:', error));
+  // 统一 Job 基座：启动恢复（doc #17）——清理过期幂等键、补登记领域孤儿、按领域事实重分类。
+  void recoverJobsOnBoot().catch(error => console.error('无法恢复统一任务:', error));
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
@@ -50,6 +48,16 @@ async function startServer() {
   app.listen(port, '127.0.0.1', () => {
     console.log(`Semovix Voice Studio running at http://127.0.0.1:${port}`);
   });
+
+  // 受控停机（doc #15/#16）：以 app_shutdown 取消活跃任务，宽限 10s 等领域终态落盘
+  const shutdown = async (signal: string) => {
+    console.log(`收到 ${signal}，正在停止统一任务…`);
+    try { await shutdownActiveJobs(10_000); }
+    catch (error) { console.error('停止统一任务失败:', error); }
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 startServer();

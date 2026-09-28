@@ -74,6 +74,28 @@ describe('migrate()', () => {
     db.close();
   });
 
+  it('creates runtime_jobs with the partial unique idempotency index (P0-B #14/#18)', () => {
+    const db = new Database(path.join(dir, 'library.db'));
+    migrate(db);
+
+    const columns = (db.prepare("PRAGMA table_info('runtime_jobs')").all() as Array<{ name: string }>)
+      .map(column => column.name);
+    expect(columns).toEqual(expect.arrayContaining([
+      'id', 'type', 'status', 'progress_json',
+      'payload_kind', 'payload_external_id', 'payload_path', 'identity_id',
+      'idempotency_key', 'request_hash', 'deadline_at', 'timeout_stage',
+      'attempt', 'started_at', 'finished_at', 'cancel_requested', 'cancel_reason',
+      'created_at', 'updated_at',
+    ]));
+
+    const index = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_runtime_jobs_idempotency_key'"
+    ).get() as { sql: string } | undefined;
+    expect(index?.sql).toMatch(/CREATE UNIQUE INDEX/i);
+    expect(index?.sql).toMatch(/WHERE idempotency_key IS NOT NULL/i); // 部分索引：cancelled 清键后同 key 可重用
+    db.close();
+  });
+
   it('runs each migration at most once even when list grows', () => {
     const db = new Database(path.join(dir, 'library.db'));
     migrate(db);

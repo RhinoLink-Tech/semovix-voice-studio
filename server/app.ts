@@ -19,6 +19,7 @@ import { voiceIdentitiesRouter } from './routes/voiceIdentities';
 import { voiceCloneRouter } from './routes/voiceClone';
 import { voiceAdditionalSourcesRouter } from './routes/voiceAdditionalSources';
 import { voiceSourceLifecycleRouter } from './routes/voiceSourceLifecycle';
+import { jobsRouter } from './routes/jobs';
 
 export function createApp(): express.Express {
   const app = express();
@@ -41,6 +42,7 @@ export function createApp(): express.Express {
   app.use('/api', voiceCloneRouter);
   app.use('/api', voiceAdditionalSourcesRouter);
   app.use('/api', voiceSourceLifecycleRouter);
+  app.use('/api', jobsRouter);
 
   return app;
 }

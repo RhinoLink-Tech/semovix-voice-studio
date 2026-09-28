@@ -5,6 +5,7 @@ import {
   Volume2, X,
 } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
+import { cancelJob } from '../utils/jobs';
 import './VoiceIdentityDesignView.css';
 
 type Direction = { id: string; name: string; description: string; features: string[] };
@@ -28,7 +29,7 @@ type Identity = {
   form?: { roleName?: string; scenarios?: string[]; description?: string; language?: string };
 };
 type Runtime = { supported: boolean; reachable: boolean; state: string; error: string | null };
-type Batch = { id: string; label: string; status: 'queued' | 'warming' | 'running' | 'completed' | 'failed'; completedCount: number; totalCount: number; error?: string };
+type Batch = { id: string; jobId: string; label: string; status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled'; completedCount: number; totalCount: number; error?: string };
 
 const STORAGE_KEY = 'voice-studio-design-drafts';
 const ACTIVE_BATCH_KEY = 'voice-studio-design-active-batches';
@@ -126,6 +127,9 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  // 幂等提交键（P0-B #18）：同一意图重发同 key，成功创建后换新 key
+  const [submitKey, setSubmitKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     let live = true;
@@ -168,7 +172,7 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
   }, [id]);
 
   useEffect(() => {
-    if (!batch || batch.status === 'completed' || batch.status === 'failed') return;
+    if (!batch || ['completed', 'failed', 'cancelled'].includes(batch.status)) return;
     const timer = window.setInterval(() => {
       fetch(`/api/voice-design/batches/${encodeURIComponent(batch.id)}`).then(response => response.ok ? response.json() as Promise<Batch> : null).then(value => { if (value) setBatch(value); }).catch(() => undefined);
     }, 2000);
@@ -230,7 +234,7 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
     setSubmitting(true);
     try {
       const response = await fetch('/api/voice-design/batches', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submitKey },
         body: JSON.stringify({ ...draft, identityId: id, identityName: identity.name }),
       });
       const result = await response.json() as Batch & { error?: string };
@@ -243,10 +247,22 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
       } catch { /* batch is already persisted on the server */ }
       setMessage(`${result.label} 已创建，候选生成任务正在准备。`);
       setConfirmOpen(false);
+      setSubmitKey(crypto.randomUUID()); // 新动作换新幂等键；失败重试沿用当前 key
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '声音设计批次创建失败');
       setConfirmOpen(false);
     } finally { setSubmitting(false); }
+  };
+  const cancelGeneration = async () => {
+    if (!batch?.jobId) return;
+    setCancelling(true);
+    const error = await cancelJob(batch.jobId);
+    setCancelling(false);
+    if (error) setMessage(error);
+    else {
+      setMessage('已请求取消候选生成，任务正在停止…');
+      fetch(`/api/voice-design/batches/${encodeURIComponent(batch.id)}`).then(response => response.ok ? response.json() as Promise<Batch> : null).then(value => { if (value) setBatch(value); }).catch(() => undefined);
+    }
   };
 
   return <div className="voice-design-page">
@@ -255,11 +271,11 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
     <main className="vd-workspace">
       <div className="vd-content">
         <div className="vd-topline"><button type="button" onClick={onCenter}><ArrowLeft size={14} />返回声音角色中心</button><span>声音角色工作台 / 声音来源 / AI 原创设计</span></div>
-        <header className="vd-header"><div><div className="vd-title-row"><h1>声音来源｜AI 原创设计</h1><span className="vd-draft-badge">草稿</span></div><p>通过声音 Brief、统一参考文本和设计方向，生成可进入匿名评审的候选声音。</p></div><div className="vd-header-actions"><button type="button" className="vd-secondary" onClick={() => void saveDraft()}><Save size={15} />保存草稿</button><button type="button" className="vd-quiet" onClick={onCenter}>取消</button><button type="button" className="vd-primary" onClick={() => setConfirmOpen(true)} disabled={!formReady || Boolean(batch && !['completed', 'failed'].includes(batch.status))}><Sparkles size={16} />开始生成候选 · {totalCandidates} 条</button></div></header>
+        <header className="vd-header"><div><div className="vd-title-row"><h1>声音来源｜AI 原创设计</h1><span className="vd-draft-badge">草稿</span></div><p>通过声音 Brief、统一参考文本和设计方向，生成可进入匿名评审的候选声音。</p></div><div className="vd-header-actions"><button type="button" className="vd-secondary" onClick={() => void saveDraft()}><Save size={15} />保存草稿</button><button type="button" className="vd-quiet" onClick={onCenter}>取消</button><button type="button" className="vd-primary" onClick={() => setConfirmOpen(true)} disabled={!formReady || Boolean(batch && !['completed', 'failed', 'cancelled'].includes(batch.status))}><Sparkles size={16} />开始生成候选 · {totalCandidates} 条</button></div></header>
         <div className="vd-source-banner"><div><span className="vd-source-caption">当前来源</span><strong><AudioLines size={15} />AI 原创设计</strong><p>适用于希望创建原创、可长期复用声音身份的品牌、产品、栏目或角色场景。</p></div><div className="vd-batch-summary"><span>声音设计批次</span><strong>{batch?.label || '尚未创建'}</strong><small>{batch ? `${batch.completedCount} / ${batch.totalCount} 条候选` : '开始生成后创建新批次'}</small></div></div>
         {saved && <div className="vd-saved-note"><Check size={13} />来源配置草稿已保存</div>}
         {message && <div className="vd-feedback" role="status">{message}<button type="button" onClick={() => setMessage('')} aria-label="关闭提示"><X size={14} /></button></div>}
-        {batch && <div className="vd-batch-progress" role="status"><strong>{batch.label}</strong><span>{batch.status === 'queued' ? '排队中' : batch.status === 'warming' ? '模型加载中' : batch.status === 'running' ? '候选生成中' : batch.status === 'completed' ? '候选生成完成' : '生成失败'}</span><span>{batch.completedCount} / {batch.totalCount} 条</span>{batch.status === 'completed' && <button type="button" onClick={() => onReview(id, batch.id)}>进入匿名评审</button>}{batch.error && <em>{batch.error}</em>}</div>}
+        {batch && <div className="vd-batch-progress" role="status"><strong>{batch.label}</strong><span>{batch.status === 'queued' ? '排队中' : batch.status === 'warming' ? '模型加载中' : batch.status === 'running' ? '候选生成中' : batch.status === 'completed' ? '候选生成完成' : batch.status === 'cancelled' ? '已取消' : '生成失败'}</span><span>{batch.completedCount} / {batch.totalCount} 条</span>{batch.status === 'completed' && <button type="button" onClick={() => onReview(id, batch.id)}>进入匿名评审</button>}{['queued', 'warming', 'running'].includes(batch.status) && <button type="button" onClick={() => void cancelGeneration()} disabled={cancelling}>{cancelling ? '正在取消…' : '取消生成'}</button>}{batch.error && <em>{batch.error}</em>}</div>}
 
         <div className="vd-columns">
           <div className="vd-left-column">
@@ -282,7 +298,7 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
       </div>
     </main>
 
-    <div className="vd-actionbar"><button type="button" className="vd-quiet" onClick={onCenter}>取消</button><div><button type="button" className="vd-secondary" onClick={() => void saveDraft()}><Save size={14} />保存草稿</button><button type="button" className="vd-primary" onClick={() => setConfirmOpen(true)} disabled={!formReady || Boolean(batch && !['completed', 'failed'].includes(batch.status))}><Sparkles size={15} />开始生成候选 · {totalCandidates} 条</button></div></div>
+    <div className="vd-actionbar"><button type="button" className="vd-quiet" onClick={onCenter}>取消</button><div><button type="button" className="vd-secondary" onClick={() => void saveDraft()}><Save size={14} />保存草稿</button><button type="button" className="vd-primary" onClick={() => setConfirmOpen(true)} disabled={!formReady || Boolean(batch && !['completed', 'failed', 'cancelled'].includes(batch.status))}><Sparkles size={15} />开始生成候选 · {totalCandidates} 条</button></div></div>
 
     {playerOpen && <div className="vd-player" role="region" aria-label="全局音频播放器"><div className="vd-player-identity"><div className="vd-player-mark"><AudioLines size={18} /></div><div><strong>{identity.name}</strong><span>AI 原创设计草稿 · 尚未生成候选音频</span></div></div><div className="vd-player-controls"><button type="button" disabled aria-label="暂无音频可播放"><Play size={16} fill="currentColor" /></button><span>0:00</span><input type="range" value="0" min="0" max="100" disabled aria-label="播放进度" /><span>--:--</span></div><div className="vd-player-tail"><Volume2 size={17} /><input type="range" min="0" max="100" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="音量" /><button type="button" title="展开播放器" aria-label="展开播放器" onClick={() => setPlayerExpanded(value => !value)}><Maximize2 size={16} /></button><button type="button" title="关闭播放器" aria-label="关闭播放器" onClick={() => setPlayerOpen(false)}><X size={17} /></button></div>{playerExpanded && <div className="vd-player-expanded">尚未生成候选声音，当前没有可试听音频。</div>}</div>}
 

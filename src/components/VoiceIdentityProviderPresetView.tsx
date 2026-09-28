@@ -2,13 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, Check, CircleHelp, FileCheck2, Headphones, Pause, Play, Save, ShieldCheck, Volume2, X } from 'lucide-react';
 import { isDesktopMode, saveFromUrl } from '../desktop/fileDialogs';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
+import { cancelJob } from '../utils/jobs';
 import './VoiceIdentityAdditionalSources.css';
 
 type Identity = { name: string; ownerName: string; language: string; source: string; status: string };
 type Selection = {
   provider: 'qwen3-tts-local'; providerLabel: string; speaker: string; language: string;
   licenseAccepted: boolean; nonExclusiveAcknowledged: boolean; allowedUses: string[]; prohibitedUses: string[];
-  selectedAt: string; preview?: { id: string; status: 'queued' | 'warming' | 'running' | 'completed' | 'failed'; duration?: number; sampleRate?: number; error?: string; createdAt: string; updatedAt: string };
+  selectedAt: string; preview?: { id: string; jobId: string; status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled'; duration?: number; sampleRate?: number; error?: string; createdAt: string; updatedAt: string };
 };
 type Catalog = { providers: Array<{ id: 'qwen3-tts-local'; label: string; model: string; speakers: string[]; languages: string[]; available: boolean; license: string }>; selection: Selection | null };
 
@@ -31,6 +32,9 @@ export function VoiceIdentityProviderPresetView({ id, onCenter, onValidation }: 
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  // 幂等提交键（P0-B #18）：同一意图重发同 key，成功入队后换新 key
+  const [submitKey, setSubmitKey] = useState(() => crypto.randomUUID());
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(78);
   const [playerOpen, setPlayerOpen] = useState(true);
@@ -90,13 +94,22 @@ export function VoiceIdentityProviderPresetView({ id, onCenter, onValidation }: 
     if (!await save()) return;
     setPreviewing(true);
     try {
-      const response = await fetch(`/api/voice-identities/${encodeURIComponent(id)}/provider-presets/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const response = await fetch(`/api/voice-identities/${encodeURIComponent(id)}/provider-presets/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submitKey }, body: JSON.stringify({}) });
       const result = await response.json() as { preview?: Selection['preview']; error?: string };
       if (!response.ok || !result.preview) throw new Error(result.error || '生成试听失败。');
       setSelection(previous => previous ? { ...previous, preview: result.preview } : null);
+      setSubmitKey(crypto.randomUUID()); // 新动作换新幂等键；失败重试沿用当前 key
       setMessage('试听样音任务已进入队列；生成状态会自动更新。');
     } catch (error) { setMessage(error instanceof Error ? error.message : '生成试听失败。'); }
     finally { setPreviewing(false); }
+  };
+  const cancelPreview = async () => {
+    if (!selection?.preview?.jobId) return;
+    setCancelling(true);
+    const error = await cancelJob(selection.preview.jobId);
+    setCancelling(false);
+    setMessage(error || '已请求取消试听样音生成，任务正在停止…');
+    if (!error) void hydrate().catch(() => undefined);
   };
 
   const togglePlayback = async () => {
@@ -110,7 +123,7 @@ export function VoiceIdentityProviderPresetView({ id, onCenter, onValidation }: 
     <VoiceWorkspaceSidebar active="声音来源" name={identity?.name || '未命名声音角色'} owner={identity?.ownerName || '未选择'} source="Provider 预置音色" language={languageLabel(identity?.language || language)} roleSummary status={identity?.status || '草稿'} verificationHint={previewReady ? '可进入' : '生成样音后可进入'} onOverview={onCenter} onValidation={onValidation} />
     <main className="vas-workspace"><div className="vas-content">
       <button type="button" className="vas-back" onClick={onCenter}><ArrowLeft size={14} />返回声音角色中心</button>
-      <header className="vas-header"><div><div className="vas-eyebrow"><Headphones size={14} />声音来源</div><h1>声音来源｜Provider 预置音色</h1><p>从已连接 Provider 的真实音色目录中选择声音，确认许可和非独占性后归档为当前角色的来源配置。</p></div><div className="vas-header-actions"><button type="button" onClick={onCenter}>取消</button><button type="button" onClick={() => void save()} disabled={saving}><Save size={14} />{saving ? '正在保存…' : '保存草稿'}</button><button type="button" className="vas-primary" onClick={() => void createPreview()} disabled={!canSave || previewing || previewInProgress}>{previewInProgress ? '样音生成中…' : previewing ? '正在创建…' : '生成试听样音'}</button></div></header>
+      <header className="vas-header"><div><div className="vas-eyebrow"><Headphones size={14} />声音来源</div><h1>声音来源｜Provider 预置音色</h1><p>从已连接 Provider 的真实音色目录中选择声音，确认许可和非独占性后归档为当前角色的来源配置。</p></div><div className="vas-header-actions"><button type="button" onClick={onCenter}>取消</button>{previewInProgress && <button type="button" onClick={() => void cancelPreview()} disabled={cancelling}>{cancelling ? '正在取消…' : '取消生成'}</button>}<button type="button" onClick={() => void save()} disabled={saving}><Save size={14} />{saving ? '正在保存…' : '保存草稿'}</button><button type="button" className="vas-primary" onClick={() => void createPreview()} disabled={!canSave || previewing || previewInProgress}>{previewInProgress ? '样音生成中…' : previewing ? '正在创建…' : '生成试听样音'}</button></div></header>
       <div className="vas-source-strip"><FileCheck2 size={15} /><div><strong>当前来源：Provider 预置音色</strong><span>预置音色属于 Provider 能力，不作为独占品牌声音发布；正式使用前仍需完成该来源对应的验证与发布。</span></div></div>
       {message && <div className="vas-feedback" role="status">{message}<button type="button" onClick={() => setMessage('')} aria-label="关闭提示"><X size={14} /></button></div>}
       <div className="vas-columns"><div className="vas-left">
@@ -123,8 +136,8 @@ export function VoiceIdentityProviderPresetView({ id, onCenter, onValidation }: 
         <section className="vas-panel"><div className="vas-panel-head"><div><h2>使用边界</h2><p>这组边界会随声音角色和来源配置一起保存。</p></div></div><div className="vas-boundary"><strong>允许用途</strong><div>{ALLOWED_OPTIONS.map(value => <button key={value} type="button" className={allowedUses.includes(value) ? 'is-allowed' : ''} onClick={() => setAllowedUses(current => toggle(current, value))}>{allowedUses.includes(value) && <Check size={11} />}{value}</button>)}</div></div><div className="vas-boundary"><strong>禁止用途</strong><div>{PROHIBITED_OPTIONS.map(value => <button key={value} type="button" className={prohibitedUses.includes(value) ? 'is-prohibited' : ''} onClick={() => setProhibitedUses(current => toggle(current, value))}>{prohibitedUses.includes(value) && <Check size={11} />}{value}</button>)}</div></div></section>
       </div><aside className="vas-right">
         <section className="vas-panel"><div className="vas-panel-head"><div><h2>许可确认</h2><p>确认使用前提，不能由系统替代 Provider 的许可判断。</p></div><ShieldCheck size={17} /></div><label className="vas-check"><input type="checkbox" checked={licenseAccepted} onChange={event => setLicenseAccepted(event.target.checked)} />我已核对并归档当前 Provider 的适用许可。</label><label className="vas-check"><input type="checkbox" checked={nonExclusiveAcknowledged} onChange={event => setNonExclusiveAcknowledged(event.target.checked)} />我理解该预置音色为非独占能力，不能宣称为唯一品牌声音。</label><div className="vas-warning"><CircleHelp size={13} />部署方应在合同或许可库中保存 Provider 版本、地域和商业使用依据。</div></section>
-        <section className="vas-panel"><div className="vas-panel-head"><div><h2>当前选择</h2><p>保存后会写入声音角色来源配置。</p></div></div><dl className="vas-details"><div><dt>Provider</dt><dd>{provider?.label || '待连接'}</dd></div><div><dt>音色 ID</dt><dd>{speaker || '待选择'}</dd></div><div><dt>语言</dt><dd>{language}</dd></div><div><dt>非独占性</dt><dd>{nonExclusiveAcknowledged ? '已确认' : '待确认'}</dd></div><div><dt>试听样音</dt><dd>{previewReady ? `已归档 · ${selection?.preview?.duration?.toFixed(1) || '—'} 秒` : selection?.preview ? `生成中 · ${selection.preview.status}` : '尚未生成'}</dd></div></dl></section>
-        <section className="vas-panel vas-preview"><div className="vas-panel-head"><div><h2>正式试听样音</h2><p>实际由已选择的 Provider 音色生成并归档。</p></div><span className={previewReady ? 'vas-ready' : 'vas-pending'}>{previewReady ? '可试听' : selection?.preview ? '生成中' : '尚未生成'}</span></div>{audioUrl ? <><audio ref={audio} src={audioUrl} onEnded={() => setIsPlaying(false)} /><div className="vas-audio-row"><button type="button" className="vas-play" onClick={() => void togglePlayback()}>{isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</button><span>{selection?.preview?.duration?.toFixed(1)} 秒 · WAV · {selection?.preview?.sampleRate} Hz</span></div><a href={audioUrl} download={`provider-preview-${speaker}.wav`} onClick={event => { if (isDesktopMode()) { event.preventDefault(); void saveFromUrl(`provider-preview-${speaker}.wav`, audioUrl); } } }>下载试听 WAV</a></> : <div className="vas-empty-preview"><AudioLines size={18} />{selection?.preview?.status === 'failed' ? `生成失败：${selection.preview.error || '请检查 Worker 状态后重试。'}` : selection?.preview ? '样音正在由 Worker 生成，完成后可直接试听。' : '保存选择后生成一次真实试听样音。'}</div>}</section>
+        <section className="vas-panel"><div className="vas-panel-head"><div><h2>当前选择</h2><p>保存后会写入声音角色来源配置。</p></div></div><dl className="vas-details"><div><dt>Provider</dt><dd>{provider?.label || '待连接'}</dd></div><div><dt>音色 ID</dt><dd>{speaker || '待选择'}</dd></div><div><dt>语言</dt><dd>{language}</dd></div><div><dt>非独占性</dt><dd>{nonExclusiveAcknowledged ? '已确认' : '待确认'}</dd></div><div><dt>试听样音</dt><dd>{previewReady ? `已归档 · ${selection?.preview?.duration?.toFixed(1) || '—'} 秒` : selection?.preview?.status === 'cancelled' ? '已取消' : selection?.preview ? `生成中 · ${selection.preview.status}` : '尚未生成'}</dd></div></dl></section>
+        <section className="vas-panel vas-preview"><div className="vas-panel-head"><div><h2>正式试听样音</h2><p>实际由已选择的 Provider 音色生成并归档。</p></div><span className={previewReady ? 'vas-ready' : 'vas-pending'}>{previewReady ? '可试听' : selection?.preview ? '生成中' : '尚未生成'}</span></div>{audioUrl ? <><audio ref={audio} src={audioUrl} onEnded={() => setIsPlaying(false)} /><div className="vas-audio-row"><button type="button" className="vas-play" onClick={() => void togglePlayback()}>{isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</button><span>{selection?.preview?.duration?.toFixed(1)} 秒 · WAV · {selection?.preview?.sampleRate} Hz</span></div><a href={audioUrl} download={`provider-preview-${speaker}.wav`} onClick={event => { if (isDesktopMode()) { event.preventDefault(); void saveFromUrl(`provider-preview-${speaker}.wav`, audioUrl); } } }>下载试听 WAV</a></> : <div className="vas-empty-preview"><AudioLines size={18} />{selection?.preview?.status === 'failed' ? `生成失败：${selection.preview.error || '请检查 Worker 状态后重试。'}` : selection?.preview?.status === 'cancelled' ? `已取消：${selection.preview.error || '可重新生成试听样音。'}` : selection?.preview ? '样音正在由 Worker 生成，完成后可直接试听。' : '保存选择后生成一次真实试听样音。'}</div>}</section>
       </aside></div>
     </div></main>
     <div className="vas-actionbar"><button type="button" onClick={onCenter}>取消</button><div><button type="button" onClick={() => void save()} disabled={saving}>保存草稿</button><button type="button" className="vas-primary" onClick={() => void createPreview()} disabled={!canSave || previewing || previewInProgress}>{previewInProgress ? '样音生成中…' : previewing ? '正在创建…' : '生成试听样音'}</button></div></div>

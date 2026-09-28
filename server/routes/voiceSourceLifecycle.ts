@@ -1,11 +1,14 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import type { Dirent } from 'fs';
 import path from 'path';
 import { Router } from 'express';
 import { getConfig } from '../config';
 import { parseWav } from '../audio/wav';
-import { qwenVoiceCatalog, resolveQwenSpeaker, waitForWorkerEngineReady, whisperWorkerTranscribe } from '../engines/qwenWorker';
+import { qwenVoiceCatalog, resolveQwenSpeaker } from '../engines/qwenWorker';
+import { submitJob } from '../jobs/runner';
+import { deleteJob, findByIdempotencyKey } from '../jobs/store';
+import { IdempotencyConflictError } from '../jobs/errors';
+import '../jobs/executors/sourceValidation';
 import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities';
 import { fail } from './respond';
 
@@ -18,17 +21,17 @@ import { fail } from './respond';
  */
 export const voiceSourceLifecycleRouter = Router();
 
-type SourceName = '授权真人克隆' | 'Provider 预置音色' | '导入已有 Voice Profile';
+export type SourceName = '授权真人克隆' | 'Provider 预置音色' | '导入已有 Voice Profile';
 type CheckState = 'passed' | 'attention' | 'failed';
 type ValidationCheck = { id: string; label: string; state: CheckState; value: string; detail?: string };
 type SourceAudio = { file: string; sha256: string; duration: number; sampleRate: number; url: string; expectedText: string };
 type SourceSnapshot = { source: SourceName; allowedUses: string[]; prohibitedUses: string[]; productionModel: string; asset: Record<string, unknown> };
 type InspectedSource = { audio: SourceAudio; snapshot: SourceSnapshot; checks: ValidationCheck[]; reference?: SourceAudio; extras?: Array<{ file: string; target: string }> };
-type SourceValidation = {
+export type SourceValidation = {
   schemaVersion: 1;
   identityId: string;
   source: SourceName;
-  status: 'queued' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -51,30 +54,29 @@ const VERSION = /^V\d+\.\d+(?:\.\d+)?$/;
 const PREVIEW_TEXT = '这是当前预置声音的统一试听文本，用于确认声音身份、清晰度和适用场景。';
 const root = (id: string) => path.join(getConfig().libraryDir, 'voice-identities', id);
 const sourceLifecycleRoot = (id: string) => path.join(root(id), 'source-validation');
-const validationFile = (id: string) => path.join(sourceLifecycleRoot(id), 'validation.json');
+export const validationFile = (id: string) => path.join(sourceLifecycleRoot(id), 'validation.json');
 const decisionFile = (id: string) => path.join(sourceLifecycleRoot(id), 'decision.json');
 const profileRoot = (id: string) => path.join(getConfig().libraryDir, 'voice-profiles', id);
 const profileDirectory = (id: string, version: string) => path.join(profileRoot(id), version);
-let sourceValidationQueue: Promise<void> = Promise.resolve();
 
 function hash(value: Buffer | string) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function safeText(value: unknown, max: number) { return typeof value === 'string' ? value.trim().slice(0, max) : ''; }
 function textList(value: unknown) { return Array.isArray(value) ? [...new Set(value.map(item => safeText(item, 80)).filter(Boolean))].slice(0, 12) : []; }
-function isSource(value: string): value is SourceName { return value === '授权真人克隆' || value === 'Provider 预置音色' || value === '导入已有 Voice Profile'; }
-function now() { return new Date().toISOString(); }
+export function isSource(value: string): value is SourceName { return value === '授权真人克隆' || value === 'Provider 预置音色' || value === '导入已有 Voice Profile'; }
+export function now() { return new Date().toISOString(); }
 function sourceFile(id: string, relative: string) { return path.join(root(id), relative); }
 
-async function readJson<T>(file: string): Promise<T | null> {
+export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch (error: any) { if (error?.code === 'ENOENT') return null; throw error; }
 }
-async function writeJson(file: string, value: unknown) {
+export async function writeJson(file: string, value: unknown) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   await fs.rename(temporary, file);
 }
-async function appendAudit(identityId: string, event: Record<string, unknown>) {
+export async function appendAudit(identityId: string, event: Record<string, unknown>) {
   const file = path.join(root(identityId), 'source-validation', 'audit.jsonl');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.appendFile(file, `${JSON.stringify({ at: now(), ...event })}\n`, 'utf8');
@@ -100,14 +102,18 @@ function levenshtein(left: string, right: string) {
   }
   return previous[right.length];
 }
-function consistency(expected: string, actual: string) {
+export function consistency(expected: string, actual: string) {
   const left = normalize(expected); const right = normalize(actual);
   if (!left || !right) return null;
   return Math.max(0, Math.round((1 - levenshtein(left, right) / Math.max(left.length, right.length)) * 1000) / 10);
 }
-function pass(id: string, label: string, value: string, detail?: string): ValidationCheck { return { id, label, value, detail, state: 'passed' }; }
-function failed(id: string, label: string, detail: string): ValidationCheck { return { id, label, value: '未通过', detail, state: 'failed' }; }
-function publicValidation(run: SourceValidation) { return run; }
+export function pass(id: string, label: string, value: string, detail?: string): ValidationCheck { return { id, label, value, detail, state: 'passed' }; }
+export function failed(id: string, label: string, detail: string): ValidationCheck { return { id, label, value: '未通过', detail, state: 'failed' }; }
+/** 同一角色可多次重建验证；identityId#createdAtEpoch 让每次 run 拥有独立任务行 */
+export function sourceValidationJobExternalId(run: Pick<SourceValidation, 'identityId' | 'createdAt'>) {
+  return `${run.identityId}#${Date.parse(run.createdAt) || 0}`;
+}
+function publicValidation(run: SourceValidation) { return { ...run, jobId: `source-validation:${sourceValidationJobExternalId(run)}` }; }
 
 async function verifiedWav(file: string, expectedHash: string, label: string) {
   const content = await fs.readFile(file);
@@ -181,55 +187,10 @@ async function inspectClone(identityId: string): Promise<InspectedSource> {
   };
 }
 
-async function inspectSource(identityId: string, source: SourceName) {
+export async function inspectSource(identityId: string, source: SourceName) {
   if (source === 'Provider 预置音色') return inspectProvider(identityId);
   if (source === '导入已有 Voice Profile') return inspectImported(identityId);
   return inspectClone(identityId);
-}
-
-async function runValidation(identityId: string, source: SourceName) {
-  const validation = await readJson<SourceValidation>(validationFile(identityId));
-  if (!validation || validation.status === 'completed') return;
-  try {
-    validation.status = 'running'; validation.updatedAt = now(); await writeJson(validationFile(identityId), validation);
-    const inspected = await inspectSource(identityId, source);
-    let transcript = ''; let textConsistency: number | null = null;
-    const checks = [...inspected.checks];
-    if (inspected.audio.expectedText) {
-      await waitForWorkerEngineReady('whisper_asr', { timeoutMs: 600_000, pollIntervalMs: 2_000 });
-      const wav = await fs.readFile(inspected.audio.file);
-      const asr = await whisperWorkerTranscribe(wav, source === 'Provider 预置音色' ? 'zh' : 'auto');
-      transcript = asr.transcript;
-      textConsistency = consistency(inspected.audio.expectedText, transcript);
-      if (textConsistency === null || textConsistency < 70) checks.push(failed('asr_consistency', '回听文本一致性', `ASR 一致性 ${textConsistency ?? 0}% ，需要重新处理来源样本。`));
-      else checks.push(pass('asr_consistency', '回听文本一致性', `${textConsistency}%`));
-    } else {
-      checks.push({ id: 'asr_consistency', label: '回听文本一致性', state: 'attention', value: '未提供参考文本', detail: '已保留人工完整回听确认，无法执行逐字 ASR 对齐。' });
-    }
-    validation.status = checks.some(check => check.state === 'failed') ? 'failed' : 'completed';
-    validation.completedAt = now(); validation.updatedAt = validation.completedAt; validation.checks = checks;
-    validation.audio = { file: path.basename(inspected.audio.file), sha256: inspected.audio.sha256, duration: inspected.audio.duration, sampleRate: inspected.audio.sampleRate, url: inspected.audio.url };
-    validation.transcript = transcript; validation.textConsistency = textConsistency; validation.snapshot = inspected.snapshot;
-    await writeJson(validationFile(identityId), validation);
-    await appendAudit(identityId, { action: 'source_validation_completed', source, status: validation.status, checks: checks.map(item => ({ id: item.id, state: item.state })) });
-  } catch (error) {
-    validation.status = 'failed'; validation.error = error instanceof Error ? error.message : String(error); validation.updatedAt = now(); validation.completedAt = validation.updatedAt;
-    await writeJson(validationFile(identityId), validation);
-    await appendAudit(identityId, { action: 'source_validation_failed', source, error: validation.error });
-  }
-}
-
-/** 后端重启不会让已落盘的来源验证永久停在“验证中”。 */
-export async function resumeSourceValidationJobs() {
-  let entries: Dirent<string>[];
-  try { entries = await fs.readdir(path.join(getConfig().libraryDir, 'voice-identities'), { withFileTypes: true }); }
-  catch (error: any) { if (error?.code === 'ENOENT') return; throw error; }
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !SAFE_ID.test(entry.name)) continue;
-    const run = await readJson<SourceValidation>(validationFile(entry.name));
-    if (!run || !isSource(run.source) || !['queued', 'running'].includes(run.status)) continue;
-    sourceValidationQueue = sourceValidationQueue.then(() => runValidation(entry.name, run.source)).catch(error => console.error('Source validation resume queue:', error));
-  }
 }
 
 async function requireSourceIdentity(id: string) {
@@ -243,7 +204,8 @@ voiceSourceLifecycleRouter.get('/voice-identities/:identityId/source-validation'
   try {
     const sourceResult = await requireSourceIdentity(req.params.identityId);
     if (!('source' in sourceResult)) return fail(res, sourceResult.status, sourceResult.error, sourceResult.code);
-    return res.json({ validation: await readJson<SourceValidation>(validationFile(req.params.identityId)), decision: await readJson<SourceDecision>(decisionFile(req.params.identityId)) });
+    const validation = await readJson<SourceValidation>(validationFile(req.params.identityId));
+    return res.json({ validation: validation ? publicValidation(validation) : null, decision: await readJson<SourceDecision>(decisionFile(req.params.identityId)) });
   } catch (error: any) { return fail(res, 500, error?.message || '读取来源验证失败。', 'source_validation_read_failed'); }
 });
 
@@ -252,13 +214,38 @@ voiceSourceLifecycleRouter.post('/voice-identities/:identityId/source-validation
     const sourceResult = await requireSourceIdentity(req.params.identityId);
     if (!('source' in sourceResult)) return fail(res, sourceResult.status, sourceResult.error, sourceResult.code);
     const source = sourceResult.source as SourceName;
+    // 幂等提交（doc #18）：同 key 同指纹 → 回放既有验证任务；同 key 异指纹 → 409
+    const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
+    const requestHash = hash(JSON.stringify({ identityId: req.params.identityId, source }));
+    if (idempotencyKey) {
+      const existingJob = findByIdempotencyKey(idempotencyKey);
+      if (existingJob) {
+        if (existingJob.requestHash !== requestHash) {
+          return fail(res, 409, '幂等键已绑定其他验证请求，请刷新后重试。', 'idempotency_key_conflict', { existingJobId: existingJob.id });
+        }
+        const run = await readJson<SourceValidation>(validationFile(req.params.identityId));
+        if (run) return res.status(202).json({ validation: publicValidation(run) });
+        return fail(res, 409, '幂等键对应的验证记录已缺失，请更换幂等键后重试。', 'job_payload_missing');
+      }
+    }
     const existing = await readJson<SourceValidation>(validationFile(req.params.identityId));
     if (existing?.status === 'queued' || existing?.status === 'running') return res.status(202).json({ validation: publicValidation(existing) });
     if (existing?.status === 'completed') return res.status(409).json({ error: '当前来源已完成验证；若来源配置变更，请创建新声音角色版本。', code: 'source_validation_exists', validation: publicValidation(existing) });
+    if (existing) {
+      // failed/cancelled → 允许重建：删除旧任务行让出主键（连带回放用的旧幂等键）
+      deleteJob(`source-validation:${sourceValidationJobExternalId(existing)}`);
+    }
     const createdAt = now();
     const run: SourceValidation = { schemaVersion: 1, identityId: req.params.identityId, source, status: 'queued', createdAt, updatedAt: createdAt, checks: [] };
     await writeJson(validationFile(req.params.identityId), run);
-    sourceValidationQueue = sourceValidationQueue.then(() => runValidation(req.params.identityId, source)).catch(error => console.error('Source validation queue:', error));
+    try {
+      submitJob({ kind: 'source-validation', externalId: sourceValidationJobExternalId(run), payloadPath: validationFile(req.params.identityId), identityId: req.params.identityId, total: 1, idempotencyKey, requestHash });
+    } catch (error) {
+      if (error instanceof IdempotencyConflictError) {
+        return fail(res, 409, error.message, 'idempotency_key_conflict', { existingJobId: error.existingJobId });
+      }
+      throw error;
+    }
     return res.status(202).json({ validation: publicValidation(run) });
   } catch (error: any) { return fail(res, 500, error?.message || '启动来源验证失败。', 'source_validation_start_failed'); }
 });

@@ -107,10 +107,22 @@ export class WorkerNotReadyError extends Error {
 export interface WaitReadyOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
+  /** 任务取消/整任务 Deadline 的 AbortSignal：触发时立即以 AbortError 中止等待 */
+  signal?: AbortSignal;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('等待已被中止', 'AbortError'));
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('等待已被中止', 'AbortError')); }, { once: true });
+  });
+}
+
+/** 任务 signal 与单次调用超时合并：任一触发即中止 fetch（Node ≥ 20.3） */
+function combinedSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 /**
@@ -133,6 +145,7 @@ export async function waitForWorkerEngineReady(
   let lastError: string | null = null;
 
   while (Date.now() < deadline) {
+    if (opts.signal?.aborted) throw new DOMException('等待已被中止', 'AbortError');
     const status = await getWorkerStatus();
     if (!status.reachable) {
       throw new WorkerNotReadyError(
@@ -160,7 +173,7 @@ export async function waitForWorkerEngineReady(
         /* 预热请求失败：下一轮轮询兜底 */
       }
     }
-    await sleep(pollIntervalMs);
+    await sleep(pollIntervalMs, opts.signal);
   }
   throw new WorkerNotReadyError(
     `等待引擎 ${engine} 就绪超时（${Math.round(timeoutMs / 1000)}s，最后状态 ${lastState}${lastError ? `：${lastError}` : ''}）。大模型首次加载较慢属正常现象，请稍后重试或先手动预热。`,
@@ -243,6 +256,7 @@ export async function qwenWorkerSynthesize(req: {
   speaker: string;
   language?: string;
   instruct?: string | null;
+  signal?: AbortSignal;
 }): Promise<Buffer> {
   const res = await fetch(`${workerUrl()}/tts/qwen`, {
     method: 'POST',
@@ -253,7 +267,7 @@ export async function qwenWorkerSynthesize(req: {
       language: req.language || 'Auto',
       instruct: req.instruct ?? null,
     }),
-    signal: AbortSignal.timeout(300_000),
+    signal: combinedSignal(req.signal, 300_000),
   });
   if (!res.ok) throw await workerError(res, `Qwen Worker 合成失败 (HTTP ${res.status})。请确认 worker/ 已启动（双击「启动Worker.command」）。`);
   return Buffer.from(await res.arrayBuffer());
@@ -265,12 +279,14 @@ export async function qwenWorkerVoiceDesign(req: {
   instruct: string;
   language: 'Chinese' | 'English' | 'Auto';
   seed: number;
+  signal?: AbortSignal;
 }): Promise<Buffer> {
+  const { signal: _jobSignal, ...payload } = req;
   const res = await fetch(`${workerUrl()}/tts/voice-design`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-    signal: AbortSignal.timeout(600_000),
+    body: JSON.stringify(payload),
+    signal: combinedSignal(req.signal, 600_000),
   });
   if (!res.ok) throw await workerError(res, `VoiceDesign Worker 合成失败 (HTTP ${res.status})`);
   return Buffer.from(await res.arrayBuffer());
@@ -282,6 +298,7 @@ export async function qwenWorkerVoiceClone(req: {
   referenceText: string;
   referenceAudio: Buffer;
   language: 'Chinese' | 'English' | 'Auto';
+  signal?: AbortSignal;
 }): Promise<Buffer> {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(req.referenceAudio)], { type: 'audio/wav' }), 'reference.wav');
@@ -289,7 +306,7 @@ export async function qwenWorkerVoiceClone(req: {
   form.append('reference_text', req.referenceText);
   form.append('language', req.language);
   const res = await fetch(`${workerUrl()}/tts/voice-clone`, {
-    method: 'POST', body: form, signal: AbortSignal.timeout(600_000),
+    method: 'POST', body: form, signal: combinedSignal(req.signal, 600_000),
   });
   if (!res.ok) throw await workerError(res, `Qwen Base 克隆样音生成失败 (HTTP ${res.status})`);
   return Buffer.from(await res.arrayBuffer());
@@ -298,7 +315,8 @@ export async function qwenWorkerVoiceClone(req: {
 /** Whisper 转录（multipart 文件上传，硬性约束 #7） */
 export async function whisperWorkerTranscribe(
   wav: Buffer,
-  language: 'auto' | 'zh' | 'en' = 'auto'
+  language: 'auto' | 'zh' | 'en' = 'auto',
+  signal?: AbortSignal
 ): Promise<{ transcript: string; language: string; duration: number }> {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav');
@@ -307,7 +325,7 @@ export async function whisperWorkerTranscribe(
   const res = await fetch(`${workerUrl()}/asr/whisper`, {
     method: 'POST',
     body: form,
-    signal: AbortSignal.timeout(600_000),
+    signal: combinedSignal(signal, 600_000),
   });
   if (!res.ok) throw await workerError(res, `Whisper Worker 转录失败 (HTTP ${res.status})。请确认 worker/ 已启动。`);
   const data = (await res.json()) as { transcript?: string; language?: string; duration?: number };

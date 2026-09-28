@@ -5,6 +5,7 @@ import {
   Save, ShieldCheck, Volume2, X,
 } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
+import { cancelJob } from '../utils/jobs';
 import './VoiceIdentityValidationView.css';
 
 type Identity = { id: string; name: string; ownerName: string; language: string; source: string; status: string };
@@ -19,7 +20,7 @@ type Candidate = {
 };
 type Scenario = { id: string; name: string; text: string };
 type ValidationRun = {
-  status: 'queued' | 'warming' | 'running' | 'completed' | 'failed'; model: string;
+  status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled'; model: string; jobId: string;
   completedOutputs: number; totalOutputs: number; error?: string; completedAt?: string;
   candidates: Candidate[]; scenarios: Scenario[]; repeatText: string;
 };
@@ -62,6 +63,9 @@ export function VoiceIdentityValidationView({ id, batchId, onBack }: { id: strin
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  // 幂等提交键（P0-B #18）：同一意图重发同 key，成功入队后换新 key
+  const [submitKey, setSubmitKey] = useState(() => crypto.randomUUID());
   const [publishing, setPublishing] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -135,14 +139,23 @@ export function VoiceIdentityValidationView({ id, batchId, onBack }: { id: strin
     setStarting(true);
     try {
       const response = await fetch(`/api/voice-design/batches/${encodeURIComponent(batchId)}/validation-run`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identityId: id }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submitKey }, body: JSON.stringify({ identityId: id }),
       });
       const body = await response.json() as { validationRun?: ValidationRun; error?: string };
       if (!response.ok) throw new Error(body.error || '验证任务启动失败');
       setRun(body.validationRun || null);
+      setSubmitKey(crypto.randomUUID()); // 新动作换新幂等键；失败重试沿用当前 key
       setMessage('稳定性验证已进入队列。系统将生成测试音频、回听转录并归档证据。');
     } catch (error) { setMessage(error instanceof Error ? error.message : '验证任务启动失败'); }
     finally { setStarting(false); }
+  };
+  const cancelValidation = async () => {
+    if (!run?.jobId) return;
+    setCancelling(true);
+    const error = await cancelJob(run.jobId);
+    setCancelling(false);
+    setMessage(error || '已请求取消稳定性验证，任务正在停止…');
+    if (!error) void load();
   };
 
   const saveValidation = async () => {
@@ -189,18 +202,19 @@ export function VoiceIdentityValidationView({ id, batchId, onBack }: { id: strin
 
   const roleName = identity?.name || '当前声音角色';
   const ownerName = identity?.ownerName || '当前归属对象';
-  const runStateText = !run ? '尚未启动' : run.status === 'completed' ? '全部生成完成' : run.status === 'failed' ? '生成失败' : '生成中';
-  const primaryLabel = publishedAt ? `已发布 ${profileVersion}` : !run ? '开始稳定性验证' : run.status === 'failed' ? '验证失败 · 创建新批次' : !validationReady ? `验证进行中 · ${run.completedOutputs} / ${run.totalOutputs}` : `冻结并发布 ${profileVersion}`;
+  const runStateText = !run ? '尚未启动' : run.status === 'completed' ? '全部生成完成' : run.status === 'failed' ? '生成失败' : run.status === 'cancelled' ? '已取消' : '生成中';
+  const primaryLabel = publishedAt ? `已发布 ${profileVersion}` : !run ? '开始稳定性验证' : run.status === 'failed' ? '验证失败 · 创建新批次' : run.status === 'cancelled' ? '已取消 · 创建新批次' : !validationReady ? `验证进行中 · ${run.completedOutputs} / ${run.totalOutputs}` : `冻结并发布 ${profileVersion}`;
+  const runActive = Boolean(run && ['queued', 'warming', 'running'].includes(run.status));
 
   return <div className="voice-validation-page">
     <VoiceWorkspaceSidebar active="验证与发布" name={roleName} owner={ownerName} source="AI 原创设计" status={publishedAt ? '已发布' : validationReady ? '待冻结' : '验证中'} language={identity?.language || '中文（普通话）'} roleSummary sourceHint="已完成" verificationHint={runStateText} onOverview={onBack} onSource={onBack} />
     <main className="vv-workspace">
       <div className="vv-content">
         <div className="vv-topline"><button type="button" onClick={onBack}><ArrowLeft size={14} />返回声音来源</button><span>声音角色工作台 / 验证与发布</span></div>
-        <header className="vv-header"><div><div className="vv-title-row"><h1>验证与发布</h1><span className="vv-freeze-badge">{publishedAt ? '已发布' : validationReady ? '待冻结' : runStateText}</span></div><p>根据声音来源执行稳定性验证，归档测试证据，并由用户完成最终发布决策。</p><div className="vv-title-tags"><span>声音来源：<b>AI 原创设计</b></span><span>验证策略：<b>入围候选稳定性验证</b></span><span>设计批次：<b>Batch {batchId}</b></span></div><div className="vv-stats"><span>入围候选 <b>{run?.candidates.length || 0} 条</b></span><span>内容场景 <b>{run?.scenarios.length || 5} 组</b></span><span>重复生成 <b>3 次 / 候选</b></span><span>测试模型 <b>Qwen3-TTS Base</b></span><span>测试状态 <b>{runStateText}</b></span></div></div><div className="vv-header-actions"><button type="button" className="vv-secondary" onClick={() => void load()}><RefreshCw size={14} />刷新结果</button><button type="button" className="vv-secondary" onClick={() => void saveValidation()} disabled={!publishReady || saving || Boolean(publishedAt)}><Save size={14} />{saving ? '正在保存' : '保存验证结果'}</button><button type="button" className="vv-primary" disabled={starting || publishing || Boolean(publishedAt) || Boolean(run && !validationReady)} onClick={() => !run ? void startValidation() : validationReady ? setConfirmationOpen(true) : undefined}><LockKeyhole size={15} />{starting ? '正在启动…' : primaryLabel}</button></div></header>
+        <header className="vv-header"><div><div className="vv-title-row"><h1>验证与发布</h1><span className="vv-freeze-badge">{publishedAt ? '已发布' : validationReady ? '待冻结' : runStateText}</span></div><p>根据声音来源执行稳定性验证，归档测试证据，并由用户完成最终发布决策。</p><div className="vv-title-tags"><span>声音来源：<b>AI 原创设计</b></span><span>验证策略：<b>入围候选稳定性验证</b></span><span>设计批次：<b>Batch {batchId}</b></span></div><div className="vv-stats"><span>入围候选 <b>{run?.candidates.length || 0} 条</b></span><span>内容场景 <b>{run?.scenarios.length || 5} 组</b></span><span>重复生成 <b>3 次 / 候选</b></span><span>测试模型 <b>Qwen3-TTS Base</b></span><span>测试状态 <b>{runStateText}</b></span></div></div><div className="vv-header-actions"><button type="button" className="vv-secondary" onClick={() => void load()}><RefreshCw size={14} />刷新结果</button>{runActive && <button type="button" className="vv-secondary" onClick={() => void cancelValidation()} disabled={cancelling}>{cancelling ? '正在取消…' : '取消验证'}</button>}<button type="button" className="vv-secondary" onClick={() => void saveValidation()} disabled={!publishReady || saving || Boolean(publishedAt)}><Save size={14} />{saving ? '正在保存' : '保存验证结果'}</button><button type="button" className="vv-primary" disabled={starting || publishing || Boolean(publishedAt) || Boolean(run && !validationReady)} onClick={() => !run ? void startValidation() : validationReady ? setConfirmationOpen(true) : undefined}><LockKeyhole size={15} />{starting ? '正在启动…' : primaryLabel}</button></div></header>
         <div className="vv-strategy-strip"><div><CircleHelp size={15} /><span><strong>验证内容由声音来源自动配置</strong>当前来源为“AI 原创设计”。系统会以每条入围候选为 Base 参考音，生成五组内容测试和三次重复生成，并保存 WAV、Hash 与回听文本。</span></div><button type="button" onClick={() => setMessage('自动检查提供音频、Hash、转录与文本一致性证据；最终发布仍需由责任人完整回听后确认。')}>查看验证规则</button></div>
         {message && <div className="vv-feedback" role="status"><span>{message}</span><button type="button" onClick={() => setMessage('')} aria-label="关闭提示"><X size={14} /></button></div>}
-        {run?.error && <div className="vv-feedback" role="alert"><span>验证任务失败：{run.error}。该批次的验证证据已保留，请回到声音来源创建新批次后重新验证。</span></div>}
+        {run?.error && <div className="vv-feedback" role="alert"><span>{run.status === 'cancelled' ? `验证任务已取消：${run.error}。该批次的验证证据已保留，请回到声音来源创建新批次后重新验证。` : `验证任务失败：${run.error}。该批次的验证证据已保留，请回到声音来源创建新批次后重新验证。`}</span></div>}
 
         {!run ? <section className="vv-panel" style={{ marginTop: 12 }}><div className="vv-panel-heading"><div><h2>尚未启动稳定性验证</h2><p>开始后将创建不可覆盖的验证任务，记录候选参考音频、测试输出、Whisper 回听文本和 SHA-256 校验值。</p></div><span>预计 8 条 / 候选</span></div><button type="button" className="vv-primary" onClick={() => void startValidation()} disabled={starting}>{starting ? '正在启动…' : '开始稳定性验证'}</button></section> : <>
           <section className="vv-candidate-switch" aria-label="入围候选切换">{run.candidates.map(candidate => <button type="button" key={candidate.candidateId} className={candidate.candidateId === candidateId ? 'is-selected' : ''} onClick={() => setCandidateId(candidate.candidateId)}><div><strong>候选 {formatCandidate(candidate.candidateId)}</strong><span className={`vv-candidate-status vv-candidate-status--${candidate.status === 'passed' ? 'pass' : candidate.status === 'attention' ? 'watch' : 'clear'}`}>{statusText(candidate.status)}</span></div><Wave peaks={candidate.tasks[0]?.peaks} dense /><div><span>{candidateSummary(candidate)}</span>{candidate.candidateId === publishCandidateId && <b>当前拟发布</b>}</div></button>)}</section>

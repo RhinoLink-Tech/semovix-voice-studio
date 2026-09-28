@@ -3,22 +3,24 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Router } from 'express';
 import { getConfig } from '../config';
-import { extractPcm16, wavDuration } from '../audio/wav';
-import { qwenWorkerVoiceClone, waitForWorkerEngineReady, whisperWorkerTranscribe } from '../engines/qwenWorker';
+import { submitJob } from '../jobs/runner';
+import { deleteJob, findByIdempotencyKey } from '../jobs/store';
+import { IdempotencyConflictError } from '../jobs/errors';
+import '../jobs/executors/stabilityValidation';
 import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities';
 
 export const voiceLifecycleRouter = Router();
 
 const BASE_MODEL = 'Qwen3-TTS-12Hz-1.7B-Base';
 const VALIDATION_MODEL = BASE_MODEL;
-const TEST_SCENARIOS = [
+export const TEST_SCENARIOS = [
   { id: 'business-concepts', name: '产品与业务概念', text: '企业人工智能需要连接对象、关系、规则与证据，才能把可靠判断转化为可执行的业务行动。' },
   { id: 'abbreviations', name: '英文与缩写', text: '犀诺会结合 D R K N、D K N、S Q L 和 Agent Runtime，给出可验证的分析结果。' },
   { id: 'numbers-dates', name: '数字与日期', text: '本次版本计划在二零二六年九月二十四日发布，覆盖三类核心场景，并支持二十四小时内的稳定复现。' },
   { id: 'long-sentence', name: '长逻辑句', text: '当业务对象、数据关系、约束规则和运行证据被持续连接时，系统才能在复杂场景中解释判断依据，并把建议转化为可追踪的行动。' },
   { id: 'role-slogan', name: '角色口号', text: '让每一次讲解，都清晰、可信，并经得起长期回听。' },
 ] as const;
-const REPEAT_TEXT = '可靠的声音身份，需要在不同生成运行中保持一致的表达节奏、清晰度与长期收听体验。';
+export const REPEAT_TEXT = '可靠的声音身份，需要在不同生成运行中保持一致的表达节奏、清晰度与长期收听体验。';
 
 type ReviewRecord = {
   identityId: string;
@@ -50,7 +52,7 @@ type StoredBatch = {
   snapshot: { identityId: string; identityName: string; model: string; language: string; reference: string };
   candidates?: BatchCandidate[];
 };
-type AudioEvidence = {
+export type AudioEvidence = {
   id: string;
   file: string;
   sha256: string;
@@ -62,7 +64,7 @@ type AudioEvidence = {
   status: 'passed' | 'attention' | 'failed';
   error?: string;
 };
-type CandidateValidation = {
+export type CandidateValidation = {
   candidateId: number;
   sourceCandidateId: string;
   sourceAudio: { file: string; sha256: string; duration: number | null };
@@ -71,11 +73,11 @@ type CandidateValidation = {
   status: 'passed' | 'attention' | 'failed' | 'pending';
   attentionCount: number;
 };
-type ValidationRun = {
+export type ValidationRun = {
   schemaVersion: 1;
   identityId: string;
   batchId: string;
-  status: 'queued' | 'warming' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled';
   model: string;
   createdAt: string;
   updatedAt: string;
@@ -89,16 +91,15 @@ type ValidationRun = {
 const identityIdIsSafe = (value: string) => /^[A-Za-z0-9_-]{1,120}$/.test(value);
 const batchIdIsSafe = (value: string) => /^\d{8}-\d{2,}$/.test(value);
 const versionIsSafe = (value: string) => /^V\d+\.\d+(?:\.\d+)?$/.test(value);
-const batchDirectory = (batchId: string) => path.join(getConfig().libraryDir, 'voice-design-batches', batchId);
+export const batchDirectory = (batchId: string) => path.join(getConfig().libraryDir, 'voice-design-batches', batchId);
 const reviewPath = (batchId: string) => path.join(batchDirectory(batchId), 'review.json');
 const validationDecisionPath = (batchId: string) => path.join(batchDirectory(batchId), 'validation.json');
-const validationRunPath = (batchId: string) => path.join(batchDirectory(batchId), 'validation-run.json');
-const validationOutputDirectory = (batchId: string) => path.join(batchDirectory(batchId), 'validation-audio');
+export const validationRunPath = (batchId: string) => path.join(batchDirectory(batchId), 'validation-run.json');
+export const validationOutputDirectory = (batchId: string) => path.join(batchDirectory(batchId), 'validation-audio');
 const profileRoot = (identityId: string) => path.join(getConfig().libraryDir, 'voice-profiles', identityId);
 const profileDirectory = (identityId: string, version: string) => path.join(profileRoot(identityId), version);
-let validationQueue: Promise<void> = Promise.resolve();
 
-async function readJson<T>(file: string): Promise<T | null> {
+export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch { return null; }
 }
@@ -137,6 +138,7 @@ async function getBatch(batchId: string) {
   if (!batchIdIsSafe(batchId)) return null;
   return readJson<StoredBatch>(path.join(batchDirectory(batchId), 'batch.json'));
 }
+export { getBatch };
 
 function reviewFrom(input: unknown, identityId: string, batchId: string): ReviewRecord | null {
   if (!input || typeof input !== 'object') return null;
@@ -158,58 +160,12 @@ function reviewFrom(input: unknown, identityId: string, batchId: string): Review
   return { identityId, batchId, finalists, eliminated, vetoes: vetoMap as Record<string, string[]>, scores: scoreMap as Record<string, number[]>, notes: noteMap as Record<string, string>, tags: tagMap as Record<string, string[]>, reviewedAt: new Date().toISOString() };
 }
 
-function normalizeText(value: string) {
-  return value.toLocaleLowerCase('zh-CN').replace(/[\s\p{P}\p{S}]/gu, '');
-}
-
-function levenshtein(left: string, right: string) {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row++) {
-    let diagonal = previous[0];
-    previous[0] = row;
-    for (let column = 1; column <= right.length; column++) {
-      const old = previous[column];
-      previous[column] = Math.min(previous[column] + 1, previous[column - 1] + 1, diagonal + (left[row - 1] === right[column - 1] ? 0 : 1));
-      diagonal = old;
-    }
-  }
-  return previous[right.length];
-}
-
-function textConsistency(expected: string, transcript: string) {
-  const normalizedExpected = normalizeText(expected);
-  const normalizedTranscript = normalizeText(transcript);
-  if (!normalizedExpected || !normalizedTranscript) return null;
-  return Math.max(0, Math.round((1 - levenshtein(normalizedExpected, normalizedTranscript) / Math.max(normalizedExpected.length, normalizedTranscript.length)) * 1000) / 10);
-}
-
-function waveformPeaks(wav: Buffer, bucketCount = 32) {
-  try {
-    const { pcm } = extractPcm16(wav);
-    const samples = Math.floor(pcm.length / 2);
-    if (!samples) return [];
-    return Array.from({ length: bucketCount }, (_, bucket) => {
-      const start = Math.floor(samples * bucket / bucketCount);
-      const end = Math.max(start + 1, Math.floor(samples * (bucket + 1) / bucketCount));
-      let peak = 0;
-      for (let index = start; index < end; index++) peak = Math.max(peak, Math.abs(pcm.readInt16LE(index * 2)));
-      return Math.round(peak / 32767 * 1000) / 1000;
-    });
-  } catch { return []; }
-}
-
-function validationStatus(consistency: number | null, duration: number): AudioEvidence['status'] {
-  if (!duration || consistency === null) return 'failed';
-  if (consistency >= 88) return 'passed';
-  if (consistency >= 70) return 'attention';
-  return 'failed';
-}
-
 function publicValidationRun(run: ValidationRun) {
   return {
     schemaVersion: run.schemaVersion,
     identityId: run.identityId,
     batchId: run.batchId,
+    jobId: `stability-validation:${run.batchId}`,
     status: run.status,
     model: run.model,
     createdAt: run.createdAt,
@@ -224,75 +180,9 @@ function publicValidationRun(run: ValidationRun) {
   };
 }
 
-async function writeValidationRun(run: ValidationRun) {
+export async function writeValidationRun(run: ValidationRun) {
   run.updatedAt = new Date().toISOString();
   await writeJson(validationRunPath(run.batchId), run);
-}
-
-async function generateEvidence(run: ValidationRun, candidate: CandidateValidation, id: string, expectedText: string, target: AudioEvidence[]) {
-  const source = await fs.readFile(path.join(batchDirectory(run.batchId), candidate.sourceAudio.file));
-  const sourceHash = crypto.createHash('sha256').update(source).digest('hex');
-  if (sourceHash !== candidate.sourceAudio.sha256) {
-    throw new Error(`候选 #${String(candidate.candidateId).padStart(3, '0')} 的参考音频 Hash 校验失败，已中止验证。`);
-  }
-  const language = 'Chinese' as const;
-  const wav = await qwenWorkerVoiceClone({ text: expectedText, referenceText: (await getBatch(run.batchId))!.snapshot.reference, referenceAudio: source, language });
-  const file = `${String(candidate.candidateId).padStart(3, '0')}-${id}.wav`;
-  await fs.writeFile(path.join(validationOutputDirectory(run.batchId), file), wav, { flag: 'wx' });
-  const duration = wavDuration(wav);
-  const transcription = await whisperWorkerTranscribe(wav, 'zh');
-  const consistency = textConsistency(expectedText, transcription.transcript);
-  const evidence: AudioEvidence = {
-    id,
-    file,
-    sha256: crypto.createHash('sha256').update(wav).digest('hex'),
-    duration,
-    peaks: waveformPeaks(wav),
-    transcript: transcription.transcript,
-    transcriptLanguage: transcription.language,
-    textConsistency: consistency,
-    status: validationStatus(consistency, duration),
-  };
-  target.push(evidence);
-  run.completedOutputs += 1;
-  await writeValidationRun(run);
-}
-
-function candidateStatus(candidate: CandidateValidation): CandidateValidation['status'] {
-  const all = [...candidate.tasks, ...candidate.repeats];
-  if (!all.length || all.some(item => item.status === 'failed')) return 'failed';
-  if (all.some(item => item.status === 'attention')) return 'attention';
-  return 'passed';
-}
-
-async function runValidation(batchId: string) {
-  const run = await readJson<ValidationRun>(validationRunPath(batchId));
-  const batch = await getBatch(batchId);
-  if (!run || !batch) return;
-  try {
-    run.status = 'warming'; await writeValidationRun(run);
-    await waitForWorkerEngineReady('voice_clone', { timeoutMs: 600_000, pollIntervalMs: 2_000 });
-    await waitForWorkerEngineReady('whisper_asr', { timeoutMs: 600_000, pollIntervalMs: 2_000 });
-    run.status = 'running'; await writeValidationRun(run);
-    for (const candidate of run.candidates) {
-      for (const scenario of TEST_SCENARIOS) {
-        await generateEvidence(run, candidate, scenario.id, scenario.text, candidate.tasks);
-      }
-      for (let index = 1; index <= 3; index++) {
-        await generateEvidence(run, candidate, `repeat-${String(index).padStart(2, '0')}`, REPEAT_TEXT, candidate.repeats);
-      }
-      candidate.status = candidateStatus(candidate);
-      candidate.attentionCount = [...candidate.tasks, ...candidate.repeats].filter(item => item.status === 'attention').length;
-      await writeValidationRun(run);
-    }
-    run.status = 'completed';
-    run.completedAt = new Date().toISOString();
-    await writeValidationRun(run);
-  } catch (error) {
-    run.status = 'failed';
-    run.error = error instanceof Error ? error.message : String(error);
-    await writeValidationRun(run);
-  }
 }
 
 voiceLifecycleRouter.get('/voice-design/batches/:batchId/review', async (req, res) => {
@@ -328,8 +218,30 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
   const review = await readJson<ReviewRecord>(reviewPath(req.params.batchId));
   if (!batch || !review || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId || review.identityId !== identityId) return res.status(409).json({ error: '请先完成匿名评审，再开始稳定性验证', code: 'lifecycle_incomplete' });
   if (batch.status !== 'completed') return res.status(409).json({ error: '候选尚未全部生成完成', code: 'batch_incomplete' });
-  const existing = await readJson<ValidationRun>(validationRunPath(req.params.batchId));
-  if (existing) return res.status(409).json({ error: '当前批次已有不可覆盖的验证任务；请创建新的声音设计批次后重新验证。', code: 'validation_exists', validationRun: publicValidationRun(existing) });
+  // 幂等提交（doc #18）：同 key 同指纹 → 回放既有验证任务；同 key 异指纹 → 409。
+  const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
+  const requestHash = crypto.createHash('sha256').update(JSON.stringify({ identityId, batchId: batch.id })).digest('hex');
+  if (idempotencyKey) {
+    const existingJob = findByIdempotencyKey(idempotencyKey);
+    if (existingJob) {
+      if (existingJob.requestHash !== requestHash) {
+        return res.status(409).json({ error: '幂等键已绑定其他验证请求，请刷新后重试。', code: 'idempotency_key_conflict', existingJobId: existingJob.id });
+      }
+      const run = await readJson<ValidationRun>(validationRunPath(batch.id));
+      if (run) return res.status(202).json({ validationRun: publicValidationRun(run) });
+      return res.status(409).json({ error: '幂等键对应的验证任务记录已缺失，请更换幂等键后重试。', code: 'job_payload_missing' });
+    }
+  }
+  const existing = await readJson<ValidationRun>(validationRunPath(batch.id));
+  if (existing && existing.status !== 'cancelled') {
+    // 进行中（queued/warming/running）与 completed/failed 不可覆盖 → 原有语义保留
+    return res.status(409).json({ error: '当前批次已有不可覆盖的验证任务；请创建新的声音设计批次后重新验证。', code: 'validation_exists', validationRun: publicValidationRun(existing) });
+  }
+  if (existing) {
+    // cancelled → 允许重建：清空旧证据目录与旧任务行后全新提交（cancelled 终态已释放幂等键）
+    await fs.rm(validationOutputDirectory(batch.id), { recursive: true, force: true });
+    deleteJob(`stability-validation:${batch.id}`);
+  }
   const candidates: CandidateValidation[] = [];
   for (const reviewId of review.finalists) {
     const source = batch.candidates?.find(candidate => candidate.reviewId === reviewId && candidate.status === 'completed' && candidate.file && candidate.sha256);
@@ -342,7 +254,14 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
   const run: ValidationRun = { schemaVersion: 1, identityId, batchId: batch.id, status: 'queued', model: VALIDATION_MODEL, createdAt: now, updatedAt: now, completedOutputs: 0, totalOutputs: candidates.length * (TEST_SCENARIOS.length + 3), candidates };
   await fs.mkdir(validationOutputDirectory(batch.id), { recursive: true });
   await writeValidationRun(run);
-  validationQueue = validationQueue.then(() => runValidation(batch.id)).catch(error => console.error('Voice validation queue:', error));
+  try {
+    submitJob({ kind: 'stability-validation', externalId: batch.id, payloadPath: validationRunPath(batch.id), identityId, total: run.totalOutputs, idempotencyKey, requestHash });
+  } catch (error) {
+    if (error instanceof IdempotencyConflictError) {
+      return res.status(409).json({ error: error.message, code: 'idempotency_key_conflict', existingJobId: error.existingJobId });
+    }
+    throw error;
+  }
   return res.status(202).json({ validationRun: publicValidationRun(run) });
 });
 
