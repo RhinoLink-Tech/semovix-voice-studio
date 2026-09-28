@@ -12,7 +12,7 @@
  * 退出序列（P0-A #4）：before-quit → 停状态轮询 → 停两子进程（TERM→KILL）
  *   → 删 runtime.json → 清空 temp → quit；15s 兜底强退保证无遗留进程。
  */
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, screen, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { DesktopContext } from './context';
@@ -20,6 +20,7 @@ import { buildAppPaths, cleanTempDir, ensureAppDirs } from './lib/appPaths';
 import { UnifiedLogger } from './lib/logger';
 import { reapOrphanProcesses } from './lib/orphanReaper';
 import { allocatePort } from './lib/ports';
+import { DEFAULT_WINDOW_SIZE, loadWindowState, saveWindowState } from './lib/windowState';
 import { clearRuntimeRecord, readRuntimeRecord, writeRuntimeRecord } from './lib/supervisors';
 import { registerIpcHandlers } from './ipc';
 import { runSmokeMode } from './smoke';
@@ -77,6 +78,13 @@ if (!gotSingleInstanceLock) {
 let context: DesktopContext | null = null;
 let mainWindow: BrowserWindow | null = null;
 let quitting = false;
+
+/** 立即捕获当前窗口状态并落盘（getNormalBounds：最大化时取还原态尺寸） */
+function captureWindowState(): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || !context) return;
+  saveWindowState(context.paths.configDir, { ...win.getNormalBounds(), maximized: win.isMaximized() });
+}
 let logger: UnifiedLogger | null = null;
 
 function log(component: 'main' | 'node' | 'worker' | 'renderer', level: 'debug' | 'info' | 'warn' | 'error', event: string, message: string): void {
@@ -189,9 +197,12 @@ p{color:#999;margin:8px 0}</style></head><body><div class="card">
 }
 
 function createWindow(nodePort: number, overrideUrl?: string): void {
+  // 恢复上次窗口状态（P0-A #4）：尺寸/位置在任何显示器上可见才恢复，否则默认居中
+  const saved = context ? loadWindowState(context.paths.configDir, screen.getAllDisplays()) : null;
   mainWindow = new BrowserWindow({
-    width: 1680,
-    height: 1020,
+    width: saved?.width ?? DEFAULT_WINDOW_SIZE.width,
+    height: saved?.height ?? DEFAULT_WINDOW_SIZE.height,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: 1200,
     minHeight: 800,
     // macOS 隐藏浏览器式标题栏（保留红绿灯）；Windows/Linux 首版保留系统边框，
@@ -209,6 +220,18 @@ function createWindow(nodePort: number, overrideUrl?: string): void {
       webSecurity: true,
     },
   });
+  if (saved?.maximized) mainWindow.maximize();
+
+  // 窗口状态防抖落盘：resize/move/最大化时 500ms 合并写一次（崩溃也能保留最近状态）
+  let persistTimer: NodeJS.Timeout | null = null;
+  const persistWindowState = () => {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(captureWindowState, 500);
+  };
+  mainWindow.on('resize', () => persistWindowState());
+  mainWindow.on('move', () => persistWindowState());
+  mainWindow.on('maximize', () => persistWindowState());
+  mainWindow.on('unmaximize', () => persistWindowState());
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
@@ -236,6 +259,9 @@ function createWindow(nodePort: number, overrideUrl?: string): void {
     if (!mainWindow?.isDestroyed()) mainWindow?.reload();
   });
 
+  // 关闭窗口前立即落盘（macOS 红绿灯退出路径）
+  mainWindow.on('close', () => captureWindowState());
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -253,6 +279,8 @@ app.on('before-quit', event => {
   if (quitting || !context) return;
   quitting = true;
   event.preventDefault();
+  // ⌘Q 路径：preventDefault 后走 app.exit(0)，不会触发窗口 close 事件——先抓窗口状态
+  captureWindowState();
   const forceExitTimer = setTimeout(() => {
     log('main', 'error', 'force-exit', '退出清理超时（15s），强制退出');
     app.exit(0);

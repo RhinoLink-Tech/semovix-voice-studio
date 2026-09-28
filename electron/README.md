@@ -22,6 +22,7 @@ electron/
       ports.ts             # 动态端口分配与 HTTP 就绪等待（P0-A #5）
       runtimeStatus.ts     # 三类运行时状态聚合：进程 / 引擎 / 环境（P0-A #10）
       supervisors.ts       # Node / Python 子进程监管（P0-A #2/#3/#4）
+      windowState.ts       # 窗口尺寸/位置持久化（P0-A #4：关闭前保存 UI 状态）
   preload/preload.ts       # contextBridge 白名单桥（无 Node 能力泄漏）
 ```
 
