@@ -27,6 +27,7 @@ import { VoiceIdentityProviderPresetView } from './components/VoiceIdentityProvi
 import { VoiceIdentityImportedProfileView } from './components/VoiceIdentityImportedProfileView';
 import { VoiceIdentityReviewView } from './components/VoiceIdentityReviewView';
 import { VoiceIdentityValidationEntry } from './components/VoiceIdentityValidationEntry';
+import { DesktopGate } from './components/desktop/DesktopGate';
 
 import { AudioItem, AudioFolder } from './types/audio';
 import { 
@@ -678,6 +679,9 @@ export default function App() {
           setFolders(restoredFolders);
         }}
       />
+
+      {/* 桌面模式：首次启动向导 / 运行时状态中心（Web 模式不渲染） */}
+      <DesktopGate />
 
     </div>
   );

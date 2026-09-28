@@ -1,0 +1,159 @@
+/**
+ * Semovix Voice Studio 桌面壳共享契约（P0-A #1/#6）
+ *
+ * main / preload / renderer 三端共用的类型；本文件不得 import 'electron'
+ * 或任何 Node 专有模块——renderer（vite）会直接打包它。
+ */
+
+/** 进程监管状态机（P0-A #2/#3）：checking → starting → ready；异常 → failed；退出 → stopping/stopped */
+export type SupervisorState =
+  | 'checking'
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'stopping'
+  | 'stopped';
+
+export interface DesktopAppInfo {
+  desktop: true;
+  /** 应用版本（package.json version，桌面 Beta 与产品共用一个版本号） */
+  version: string;
+  /** darwin | win32 | linux */
+  platform: string;
+  electronVersion: string;
+  /** userData 根目录（配置/数据库/素材/日志都在其下，P0-A #7） */
+  userDataDir: string;
+  firstRunCompleted: boolean;
+  mode: 'dev' | 'packaged';
+}
+
+export interface DoctorCheck {
+  id: string;
+  state: 'pass' | 'warn' | 'fail';
+  message: string;
+}
+
+export interface DoctorReport {
+  status: 'pass' | 'pass_with_warnings' | 'fail';
+  python: { path: string; version: string } | null;
+  device: { type: string; name: string } | null;
+  checks: DoctorCheck[];
+  ranAt: string;
+  /** doctor 进程本身不可运行（解释器缺失 / 超时 / 输出不可解析）时置位 */
+  error?: string;
+}
+
+/** Python 解释器配置：二进制路径或 conda 环境（与 启动Worker.command 的解析优先级一致） */
+export interface PythonSetup {
+  kind: 'bin' | 'conda';
+  /** kind=bin 时的解释器绝对路径 */
+  path?: string;
+  /** kind=conda 时的环境名（默认 qwen3-tts） */
+  env?: string;
+}
+
+/** 四个模型的 checkpoint 配置（本地目录或 HF repo id；空串 = 用内置默认值） */
+export interface ModelSetup {
+  customVoice: string;
+  voiceDesign: string;
+  base: string;
+  asr: string;
+}
+
+/** 首次启动向导（P0-A #9）持久化的桌面配置，落盘 userData/config/desktop.json */
+export interface DesktopSetup {
+  schemaVersion: 1;
+  libraryDir: string | null;
+  python: PythonSetup | null;
+  models: ModelSetup;
+  firstRunCompletedAt: string | null;
+}
+
+export interface ProcessStatus {
+  id: 'node-api' | 'python-worker';
+  state: SupervisorState;
+  port: number | null;
+  pid: number | null;
+  /** 失败/未配置原因等人可读说明 */
+  detail: string | null;
+}
+
+export interface EngineSnapshot {
+  id: string;
+  label: string;
+  /** Worker 冷启动状态机：cold | loading | ready | error（gemini/ollama 另有 ready/cold） */
+  state: string;
+  reachable: boolean;
+  error: string | null;
+}
+
+export interface EnvironmentSnapshot {
+  python: string | null;
+  torch: string | null;
+  device: string | null;
+  ffmpeg: string | null;
+  models: ModelSetup;
+  libraryDir: string;
+}
+
+/** 单条统一日志（P0-A #11）：JSONL 落盘字段与内存缓冲共用 */
+export interface LogEntry {
+  ts: string;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  component: 'main' | 'node' | 'worker' | 'renderer';
+  event: string;
+  message: string;
+  requestId?: string;
+}
+
+export interface RuntimeStatus {
+  processes: ProcessStatus[];
+  engines: EngineSnapshot[];
+  environment: EnvironmentSnapshot;
+  doctor: DoctorReport | null;
+  recentErrors: LogEntry[];
+  updatedAt: string;
+}
+
+/** 首次向导的模型状态（P0-A #9）：前三项来自 Doctor，后三项来自 Worker 引擎状态 */
+export type WizardModelState =
+  | 'not_configured'
+  | 'needs_download'
+  | 'found'
+  | 'loading'
+  | 'ready'
+  | 'load_failed';
+
+export interface FileDialogOptions {
+  title?: string;
+  defaultPath?: string;
+  /** 扩展名过滤，如 ['wav','zip'] */
+  extensions?: string[];
+}
+
+export interface SaveFilePayload {
+  defaultName: string;
+  /** 二进制内容（WAV / Profile ZIP 导出，P0-A #12） */
+  data: Uint8Array;
+}
+
+/**
+ * 安全 Preload 暴露面（P0-A #6 白名单）。
+ * 只允许具体动作：无任意 shell、无任意路径读、无 process.env、无子进程对象。
+ */
+export interface SemovoixDesktopBridge {
+  getAppInfo(): Promise<DesktopAppInfo>;
+  getRuntimeStatus(): Promise<RuntimeStatus>;
+  runDoctor(): Promise<DoctorReport>;
+  restartWorker(): Promise<void>;
+  chooseDirectory(options?: FileDialogOptions): Promise<string | null>;
+  chooseFile(options?: FileDialogOptions): Promise<string | null>;
+  saveFile(payload: SaveFilePayload): Promise<string | null>;
+  revealInFolder(path: string): Promise<void>;
+  openLogs(): Promise<void>;
+  /** 首次向导专用：读取/保存桌面配置（具体动作，字段受 DesktopSetup 约束） */
+  getSetup(): Promise<DesktopSetup | null>;
+  saveSetup(setup: DesktopSetup): Promise<DesktopSetup>;
+  /** 运行时状态订阅；返回取消函数 */
+  onRuntimeStatusChanged(listener: (status: RuntimeStatus) => void): () => void;
+}

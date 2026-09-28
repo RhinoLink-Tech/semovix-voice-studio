@@ -19,6 +19,12 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = createApp();
   const { port, isProduction } = getConfig();
+
+  // 桌面壳健康检查身份标识：端口被本机其他服务（如 Grafana，302→登录页 200）
+  // 接管时，Electron 靠此字段甄别"应答的确实是本服务"
+  app.get('/api/ping', (_req, res) => {
+    res.json({ service: 'semovix-voice-studio' });
+  });
   // 试听任务的状态已经持久化；启动时恢复因重启中断的 Provider 任务。
   void resumeProviderPreviewJobs().catch(error => console.error('无法恢复 Provider 试听任务:', error));
   void resumeSourceValidationJobs().catch(error => console.error('无法恢复来源验证任务:', error));

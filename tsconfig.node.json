@@ -22,5 +22,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["server", "server.ts", "scripts", "test", "vite.config.ts", "vitest.config.ts"]
+  "include": ["server", "server.ts", "scripts", "test", "electron", "vite.config.ts", "vitest.config.ts"]
 }
