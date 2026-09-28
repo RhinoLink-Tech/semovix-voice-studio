@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { AudioItem, AudioFolder, AudioCategory } from '../types/audio';
 import { getAudioContext, audioBufferToWav, extractPeaks } from '../utils/audioEngine';
+import { isDesktopMode, pickFile } from '../desktop/fileDialogs';
 
 interface AudioImportModalProps {
   folders: AudioFolder[];
@@ -146,7 +147,19 @@ export const AudioImportModal: React.FC<AudioImportModalProps> = ({
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              // 桌面模式：原生文件对话框（P0-A #12）；Web：隐藏 input（拖放在两种模式下都原生可用）
+              if (isDesktopMode()) {
+                void pickFile({
+                  title: '导入音频文件',
+                  extensions: ['wav', 'mp3', 'flac', 'aac', 'ogg', 'webm'],
+                }).then(file => {
+                  if (file) processFile(file);
+                });
+              } else {
+                fileInputRef.current?.click();
+              }
+            }}
             className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
               dragActive
                 ? 'border-cyan-400 bg-cyan-950/20'

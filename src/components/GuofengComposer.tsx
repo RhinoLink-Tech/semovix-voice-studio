@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Music, Plus, Sparkles, Trash2 } from 'lucide-react';
 import type { AudioFolder, AudioItem } from '../types/audio';
+import { isDesktopMode, saveFromUrl } from '../desktop/fileDialogs';
 import { getVoiceModelConfig } from '../utils/voiceModelConfig';
 import {
   GUOFENG_INSTRUMENTS, INSTRUMENT_LABELS, compositionDuration, isGuofengComposition,
@@ -170,7 +171,7 @@ export const GuofengComposer: React.FC<Props> = ({ folders, items, onSaveToLibra
               <div className="text-xs text-neutral-400">{composition.sections.map(section => `${section.name} ${section.bars} 小节`).join(' · ')} · 约 {compositionDuration(composition).toFixed(1)} 秒</div>
               <div className="text-xs text-neutral-400">旋律动机来源：{GENERATOR_NAMES[composition.generator]} · 伴奏与音色：本地程序合成</div>
               <button disabled={busy !== null} onClick={handleRender} className="w-full rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold hover:bg-cyan-600 disabled:opacity-50">{busy === 'render' ? '正在渲染…' : '渲染并试听 WAV'}</button></>}
-            {rendered && <><audio ref={previewRef} controls src={rendered.audioUrl} className="w-full" aria-label="国风音乐试听" /><div className="flex gap-2"><a href={rendered.audioUrl} download={`${composition?.title || '国风音乐'}.wav`} className="flex items-center gap-1 rounded-lg border border-neutral-700 px-3 py-2 text-xs"><Download className="h-3.5 w-3.5" />下载 WAV</a><select value={folderId} onChange={event => setFolderId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs"><option value="">未分类</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div><button disabled={busy !== null} onClick={handleSave} className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50">{busy === 'save' ? '正在保存…' : '保存音频与可编辑编曲'}</button></>}
+            {rendered && <><audio ref={previewRef} controls src={rendered.audioUrl} className="w-full" aria-label="国风音乐试听" /><div className="flex gap-2"><a href={rendered.audioUrl} download={`${composition?.title || '国风音乐'}.wav`} onClick={event => { if (isDesktopMode()) { event.preventDefault(); void saveFromUrl(`${composition?.title || '国风音乐'}.wav`, rendered.audioUrl); } }} className="flex items-center gap-1 rounded-lg border border-neutral-700 px-3 py-2 text-xs"><Download className="h-3.5 w-3.5" />下载 WAV</a><select value={folderId} onChange={event => setFolderId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-neutral-950 p-2 text-xs"><option value="">未分类</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div><button disabled={busy !== null} onClick={handleSave} className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50">{busy === 'save' ? '正在保存…' : '保存音频与可编辑编曲'}</button></>}
             {message && <p role="status" className="text-xs text-emerald-300">{message}</p>}{error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
           </section>
         </div>

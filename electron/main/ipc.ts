@@ -10,10 +10,11 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import type { DesktopSetup, FileDialogOptions, SaveFilePayload } from '../shared/types';
+import type { DesktopSetup, FileDialogOptions, ReadFileOptions, SaveFilePayload } from '../shared/types';
 import type { DesktopContext } from './context';
 
 const MAX_SAVE_BYTES = 512 * 1024 * 1024; // Profile ZIP / 长 WAV 也远小于此
+const MAX_READ_BYTES = 512 * 1024 * 1024; // 与 saveFile 对称
 
 function toFilters(options?: FileDialogOptions): Electron.FileFilter[] | undefined {
   if (!options?.extensions || options.extensions.length === 0) return undefined;
@@ -74,6 +75,28 @@ export function registerIpcHandlers(context: DesktopContext, getWindow: () => Br
       properties: ['openFile'],
     });
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('desktop:choose-and-read-file', async (_event, options?: ReadFileOptions) => {
+    const window = getWindow();
+    const result = await dialog.showOpenDialog(window!, {
+      title: options?.title,
+      defaultPath: options?.defaultPath,
+      filters: toFilters(options),
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const filePath = result.filePaths[0];
+    const maxBytes = options?.maxBytes ?? MAX_READ_BYTES;
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) throw new Error('选择的对象不是普通文件');
+    if (stat.size === 0) throw new Error('所选文件为空');
+    if (stat.size > maxBytes) {
+      throw new Error(`文件 ${(stat.size / 1024 / 1024).toFixed(1)}MB 超过导入上限 ${Math.round(maxBytes / 1024 / 1024)}MB`);
+    }
+    // 对话框与读取都在主进程：Renderer 只收文件名与字节，不经手裸路径（#6 白名单原则）
+    const data = new Uint8Array(fs.readFileSync(filePath));
+    return { fileName: path.basename(filePath), size: stat.size, data };
   });
 
   ipcMain.handle('desktop:save-file', async (_event, payload: SaveFilePayload) => {

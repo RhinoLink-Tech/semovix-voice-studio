@@ -17,6 +17,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { AudioItem, AudioFolder } from '../types/audio';
+import { isDesktopMode, saveFromUrl } from '../desktop/fileDialogs';
 import { getVoiceModelConfig, VoiceModelConfig } from '../utils/voiceModelConfig';
 import { providerForTtsModel, normalizeVoiceSelection, providerIdForTtsModel } from '../utils/voiceProvider';
 import { useVoiceCatalog } from '../hooks/useVoiceCatalog';
@@ -660,6 +661,13 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
                 <a
                   href={generatedAudio.audioUrl}
                   download={`${assetTitle || 'ai-speech'}.wav`}
+                  onClick={event => {
+                    // 桌面：原生保存对话框；Web：保持默认下载行为（P0-A #12）
+                    if (isDesktopMode()) {
+                      event.preventDefault();
+                      void saveFromUrl(`${assetTitle || 'ai-speech'}.wav`, generatedAudio.audioUrl);
+                    }
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />

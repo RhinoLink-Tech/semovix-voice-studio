@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AudioItem, AudioFolder, SoundRecipe } from '../types/audio';
 import { renderSoundRecipe } from '../utils/audioEngine';
+import { isDesktopMode, saveFromUrl } from '../desktop/fileDialogs';
 import { getVoiceModelConfig } from '../utils/voiceModelConfig';
 
 interface AudioSFXStudioProps {
@@ -522,6 +523,13 @@ export const AudioSFXStudio: React.FC<AudioSFXStudioProps> = ({
                 <a
                   href={renderedAudio.audioUrl}
                   download={`${customTitle || 'sfx-sound'}.wav`}
+                  onClick={event => {
+                    // 桌面：原生保存对话框；Web：保持默认下载行为（P0-A #12）
+                    if (isDesktopMode()) {
+                      event.preventDefault();
+                      void saveFromUrl(`${customTitle || 'sfx-sound'}.wav`, renderedAudio.audioUrl);
+                    }
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />

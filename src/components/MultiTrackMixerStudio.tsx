@@ -22,12 +22,13 @@ import {
   Maximize2
 } from 'lucide-react';
 import { MultiTrack, TimelineClip, AudioItem, AudioFolder } from '../types/audio';
-import { 
-  MASTERING_PRESETS, 
-  renderMultiTrackMixdown, 
-  calculateTimelineDuration 
+import {
+  MASTERING_PRESETS,
+  renderMultiTrackMixdown,
+  calculateTimelineDuration
 } from '../utils/multiTrackEngine';
 import { getAudioContext } from '../utils/audioEngine';
+import { saveFromUrl } from '../desktop/fileDialogs';
 
 interface MultiTrackMixerStudioProps {
   items: AudioItem[];
@@ -360,13 +361,8 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
         }
       });
 
-      // Auto trigger browser download
-      const a = document.createElement('a');
-      a.href = result.audioUrl;
-      a.download = `${title}.wav`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // 桌面：原生保存对话框；Web：浏览器下载（P0-A #12）；blob: URL 可被 fetch 读取
+      void saveFromUrl(`${title}.wav`, result.audioUrl);
 
       setRenderedMix(result);
     } catch (e) {

@@ -26,7 +26,7 @@ electron/
   preload/preload.ts       # contextBridge 白名单桥（无 Node 能力泄漏）
 ```
 
-Renderer 侧组件在 `src/components/desktop/`（首次启动向导 + 运行时状态中心），经 `src/desktop/desktopBridge.ts` 探测桌面环境。
+Renderer 侧组件在 `src/components/desktop/`（首次启动向导 + 运行时状态中心），经 `src/desktop/desktopBridge.ts` 探测桌面环境；导入/导出经 `src/desktop/fileDialogs.ts` 走原生文件对话框（Web 模式自动回退浏览器控件）。
 
 ## 命令
 
@@ -46,6 +46,7 @@ Renderer 侧组件在 `src/components/desktop/`（首次启动向导 + 运行时
 - **进程树终止**：POSIX 上子进程以独立进程组 spawn，停止时对整组发信号——`conda run` 之类包装进程不会留下内部 python 孤儿；`stop()` 以 `exit` 事件 + 绝对上限收尾，不受 stdio 管道被残留进程占住的影响。
 - **模型配置语义**：空字符串 = 未配置 = 不注入环境变量，Worker 落回内置默认与项目 `.env`（不覆盖用户本地权重路径）。
 - **本机开发注意**：若 shell 里设置了 `ELECTRON_RUN_AS_NODE=1`，启动脚本会自动剔除；单元测试通过注入 spawn/fetch/killTree 伪造子进程，不发真实信号。
+- **原生文件对话框（P0-A #12）**：导入走 `desktop:choose-and-read-file`（对话框与读取都在 main，Renderer 只拿字节，不经手裸路径，≤512MB）；导出走 `desktop:save-file`（原子写）。Renderer 侧 `src/desktop/fileDialogs.ts` 以 `pickFile`/`saveBytes`/`saveFromUrl` 封装并产出标准 `File`/`Blob`，组件不感知运行模式；Web 模式回退 `<input type=file>` 与锚点下载。
 
 ## 数据目录（macOS：~/Library/Application Support/Semovix Voice Studio/）
 

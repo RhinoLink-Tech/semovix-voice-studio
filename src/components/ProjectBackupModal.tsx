@@ -14,6 +14,7 @@ import {
 import { AudioItem, AudioFolder } from '../types/audio';
 import { exportProjectToZip, importProjectFromZip } from '../utils/projectBackupUtils';
 import { restoreFolders } from '../utils/audioStorage';
+import { isDesktopMode, pickFile, saveBytes } from '../desktop/fileDialogs';
 
 interface ProjectBackupModalProps {
   isOpen: boolean;
@@ -57,19 +58,15 @@ export const ProjectBackupModal: React.FC<ProjectBackupModalProps> = ({
         }
       );
 
-      const downloadUrl = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
+      // 桌面：原生保存对话框；Web：浏览器下载（P0-A #12）
       const dateStr = new Date().toISOString().slice(0, 10);
-      a.download = `AudioCraft_Studio_Project_${dateStr}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
+      const { saved } = await saveBytes(`AudioCraft_Studio_Project_${dateStr}.zip`, zipBlob);
 
       setResultMessage({
-        type: 'success',
-        text: `工程备份包打包完成！已成功导出 ${items.length} 条音频素材及分类架构。`,
+        type: saved ? 'success' : 'error',
+        text: saved
+          ? `工程备份包打包完成！已成功导出 ${items.length} 条音频素材及分类架构。`
+          : '已取消保存，工程备份包未写入磁盘。',
       });
     } catch (e: any) {
       console.error('Export project failed', e);
@@ -82,11 +79,14 @@ export const ProjectBackupModal: React.FC<ProjectBackupModalProps> = ({
     }
   };
 
-  // Handle File Selection for Import
+  // Handle File Selection for Import（原生对话框与浏览器 input 共用入口）
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    await handlePickedFile(file);
+  };
 
+  const handlePickedFile = async (file: File) => {
     setIsProcessing(true);
     setResultMessage(null);
     setProgressPercent(10);
@@ -219,7 +219,16 @@ export const ProjectBackupModal: React.FC<ProjectBackupModalProps> = ({
           ) : (
             <div className="space-y-4">
               <div 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  // 桌面：原生文件对话框（P0-A #12）；Web：隐藏 input
+                  if (isDesktopMode()) {
+                    void pickFile({ title: '选择工程备份包', extensions: ['zip'] }).then(file => {
+                      if (file) void handlePickedFile(file);
+                    });
+                  } else {
+                    fileInputRef.current?.click();
+                  }
+                }}
                 className="border-2 border-dashed border-neutral-700 hover:border-cyan-500/60 bg-neutral-950/50 hover:bg-cyan-500/5 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all"
               >
                 <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-3">

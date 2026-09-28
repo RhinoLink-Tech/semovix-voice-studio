@@ -28,6 +28,7 @@ import { VoiceIdentityImportedProfileView } from './components/VoiceIdentityImpo
 import { VoiceIdentityReviewView } from './components/VoiceIdentityReviewView';
 import { VoiceIdentityValidationEntry } from './components/VoiceIdentityValidationEntry';
 import { DesktopGate } from './components/desktop/DesktopGate';
+import { saveFromUrl } from './desktop/fileDialogs';
 
 import { AudioItem, AudioFolder } from './types/audio';
 import { 
@@ -419,12 +420,8 @@ export default function App() {
   };
 
   const handleDownload = (item: AudioItem) => {
-    const a = document.createElement('a');
-    a.href = item.audioUrl;
-    a.download = `${item.title || 'audio'}.${item.format || 'wav'}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // 桌面：原生保存对话框；Web：浏览器下载（P0-A #12）
+    void saveFromUrl(`${item.title || 'audio'}.${item.format || 'wav'}`, item.audioUrl);
   };
 
   // Folder Operations

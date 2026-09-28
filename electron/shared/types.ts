@@ -137,6 +137,17 @@ export interface SaveFilePayload {
   data: Uint8Array;
 }
 
+export interface ReadFileOptions extends FileDialogOptions {
+  /** 读取上限（字节），缺省 512MB（与 saveFile 对称） */
+  maxBytes?: number;
+}
+
+export interface ChosenFilePayload {
+  fileName: string;
+  size: number;
+  data: Uint8Array;
+}
+
 /**
  * 安全 Preload 暴露面（P0-A #6 白名单）。
  * 只允许具体动作：无任意 shell、无任意路径读、无 process.env、无子进程对象。
@@ -148,6 +159,12 @@ export interface SemovoixDesktopBridge {
   restartWorker(): Promise<void>;
   chooseDirectory(options?: FileDialogOptions): Promise<string | null>;
   chooseFile(options?: FileDialogOptions): Promise<string | null>;
+  /**
+   * 原生选择并读取一个文件（P0-A #12 导入）：对话框与读取都在主进程完成，
+   * Renderer 只拿到文件名与字节，不经手裸路径——不违反"无任意路径读"原则。
+   * 取消返回 null；超限/读取失败 reject（错误消息可直接展示）。
+   */
+  chooseAndReadFile(options?: ReadFileOptions): Promise<ChosenFilePayload | null>;
   saveFile(payload: SaveFilePayload): Promise<string | null>;
   revealInFolder(path: string): Promise<void>;
   openLogs(): Promise<void>;
