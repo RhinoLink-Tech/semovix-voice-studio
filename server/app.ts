@@ -24,6 +24,7 @@ import { jobsRouter } from './routes/jobs';
 import { modelsRouter } from './routes/models';
 import { eventsRouter } from './routes/events';
 import { storageRouter } from './routes/storage';
+import { openaiCompatRouter } from './routes/openaiCompat';
 
 export function createApp(): express.Express {
   const app = express();
@@ -54,6 +55,8 @@ export function createApp(): express.Express {
   app.use('/api', eventsRouter);
   // P1 #39：存储治理（保留策略 + 占用统计 + 立即清理）
   app.use('/api', storageRouter);
+  // P2 #42：OpenAI 兼容音频端点（/v1/audio/*，路径自带前缀；早于 server.ts 的 SPA 通配符）
+  app.use(openaiCompatRouter);
 
   // P0-B #24：全局错误中间件——路由内 re-throw 的意外异常一律 JSON 下发，
   // 不再落回 Express 默认 HTML 500（破坏错误合同的路径已全部收口到这里）

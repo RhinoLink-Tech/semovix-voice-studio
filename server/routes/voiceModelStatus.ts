@@ -26,6 +26,18 @@ import { fail } from './respond';
 
 export const voiceModelStatusRouter = Router();
 
+/**
+ * Gemini 预置音色目录（P2 #42 起 /v1/audio/voices 复用）。
+ * 硬性约束 #5：Google Voice ID 与 Qwen Speaker ID 是两套独立命名空间，不得混用。
+ */
+export const GEMINI_PRESET_VOICES: ReadonlyArray<{ id: string; name: string; gender: string; title: string; tag: string }> = [
+  { id: 'Kore', name: 'Kore', gender: '男声', title: '权威男中音', tag: '沉稳睿智' },
+  { id: 'Puck', name: 'Puck', gender: '男声', title: '朝气男高音', tag: '活力轻快' },
+  { id: 'Fenrir', name: 'Fenrir', gender: '男声', title: '电影级重低音', tag: '磁性厚重' },
+  { id: 'Charon', name: 'Charon', gender: '男声', title: '播音级标准音', tag: '专业播报' },
+  { id: 'Zephyr', name: 'Zephyr', gender: '女声', title: '知性疗愈女声', tag: '温暖知性' },
+];
+
 /** 允许预热/卸载的引擎（Worker 引擎名 → 路由参数）；voice_clone 此前缺席状态面板，P0-B 补齐 */
 const WARMUP_ENGINES: Record<string, WorkerEngineId> = {
   qwen_tts: 'qwen_tts',
@@ -145,13 +157,7 @@ voiceModelStatusRouter.get('/voice-model/status', async (_req, res) => {
       : null,
     // 硬性约束 #5：Google Voice ID 与 Qwen Speaker ID 是两套独立命名空间，按引擎分列，不得混用
     voices: {
-      gemini: [
-        { id: 'Kore', name: 'Kore', gender: '男声', title: '权威男中音', tag: '沉稳睿智' },
-        { id: 'Puck', name: 'Puck', gender: '男声', title: '朝气男高音', tag: '活力轻快' },
-        { id: 'Fenrir', name: 'Fenrir', gender: '男声', title: '电影级重低音', tag: '磁性厚重' },
-        { id: 'Charon', name: 'Charon', gender: '男声', title: '播音级标准音', tag: '专业播报' },
-        { id: 'Zephyr', name: 'Zephyr', gender: '女声', title: '知性疗愈女声', tag: '温暖知性' },
-      ],
+      gemini: GEMINI_PRESET_VOICES.map(({ id, name, gender, title, tag }) => ({ id, name, gender, title, tag })),
       // 硬性约束 #6：官方精确 ID（如 uncle_fu）来自 Worker 模型运行时；Worker 未就绪时为空数组
       qwen3Tts: (qwenCatalog?.speakers ?? []).map(id => ({ id, name: id })),
     },
