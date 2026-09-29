@@ -13,6 +13,8 @@ import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities'
 import { fail } from './respond';
 // #26 原子写公共工具；executor 仍从本模块 import 该名字
 import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
+// #37 许可元数据：冻结时点固化（SPDX 纪律与字段来源见 lib/profileLicense）
+import { buildProfileLicense, type AuthorizationRecord } from '../lib/profileLicense';
 export { writeJson };
 
 /**
@@ -304,6 +306,22 @@ voiceSourceLifecycleRouter.post('/voice-identities/:identityId/source-voice-prof
       const content = `${JSON.stringify(manifest, null, 2)}\n`; const manifestHash = hash(content);
       await fs.writeFile(path.join(directory, 'manifest.json'), content, { flag: 'wx' });
       await fs.writeFile(path.join(directory, 'manifest.sha256'), `${manifestHash}  manifest.json\n`, { flag: 'wx' });
+      // #37 来源许可元数据：克隆带 authorization.json 摘要（只取元数据，绝不带 PDF 本体入 license）；
+      // Provider=条款确认、导入=透传链，均不可再分发
+      const authorization = sourceResult.source === '授权真人克隆'
+        ? await readJson<AuthorizationRecord>(sourceFile(identityId, 'clone/authorization.json'))
+        : null;
+      const license = buildProfileLicense({
+        identity: { id: identityId, name: sourceResult.identity.name },
+        profileName: decision.profileName,
+        version: decision.profileVersion,
+        sourceType: sourceResult.source,
+        frozenAt: manifest.frozenAt,
+        usageBoundaries: decision.usageBoundaries,
+        authorization,
+        generatedAt: manifest.frozenAt,
+      });
+      await fs.writeFile(path.join(directory, 'license.json'), `${JSON.stringify(license, null, 2)}\n`, { flag: 'wx' });
       await appendAudit(identityId, { action: 'source_voice_profile_published', source: sourceResult.source, version: decision.profileVersion, manifestHash });
       await markVoiceIdentityPublished(identityId, decision.profileVersion);
       return res.status(201).json({ profile: { status: 'published', version: decision.profileVersion, profileName: decision.profileName, manifestHash, manifestUrl: `/api/voice-identities/${identityId}/voice-profiles/${decision.profileVersion}/manifest` } });

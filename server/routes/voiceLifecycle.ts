@@ -12,6 +12,8 @@ import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities'
 import { captureModelIdentity, type WorkerModelIdentity } from '../engines/qwenWorker';
 import { resolveWithin } from '../lib/safeFs';
 import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
+// #37 许可元数据：冻结时点固化（SPDX 纪律与字段来源见 lib/profileLicense）
+import { buildProfileLicense } from '../lib/profileLicense';
 // #27：已发布 Profile 的读取校验收拢为单一事实来源（路由层与引擎层共用）
 import { identityIdIsSafe, readVerifiedProfileManifest, versionIsSafe } from '../lib/profileManifest';
 
@@ -335,6 +337,17 @@ voiceLifecycleRouter.post('/voice-identities/:identityId/voice-profiles', async 
     await fs.writeFile(path.join(directory, 'validation-report.json'), validationReport, { flag: 'wx' });
     await fs.writeFile(path.join(directory, 'manifest.json'), content, { flag: 'wx' });
     await fs.writeFile(path.join(directory, 'manifest.sha256'), `${hash}  manifest.json\n`, { flag: 'wx' });
+    // #37 AI 原创许可元数据：kind=ai-original、可再分发，绝不携带授权摘要（不伪装本人授权）
+    const license = buildProfileLicense({
+      identity: { id: identityId, name: batch.snapshot.identityName },
+      profileName,
+      version,
+      sourceType: 'AI_DESIGNED',
+      frozenAt: manifest.frozenAt,
+      usageBoundaries: manifest.usageBoundaries,
+      generatedAt: manifest.frozenAt,
+    });
+    await fs.writeFile(path.join(directory, 'license.json'), `${JSON.stringify(license, null, 2)}\n`, { flag: 'wx' });
     if (!await markVoiceIdentityPublished(identityId, version)) throw new Error('声音角色发布状态写入失败');
     await appendReleaseAudit(identityId, { action: 'voice_profile_published', version, profileName, manifestHash: hash, candidateId, batchId });
   } catch (error) {

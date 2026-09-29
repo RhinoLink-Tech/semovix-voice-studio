@@ -86,6 +86,20 @@ describe('authorized human clone API', () => {
     expect(frozen.body.profile.status).toBe('published');
     const manifest = await request(app).get(`/api/voice-identities/${identity.id}/voice-profiles/V1.0/manifest`).expect(200);
     expect(manifest.body.manifest.source.source).toBe('授权真人克隆');
+    // #37 许可元数据：克隆 = consent-based、授权摘要仅元数据、不可再分发
+    const license = JSON.parse(await fs.readFile(path.join(env.libraryDir, 'voice-profiles', identity.id, 'V1.0', 'license.json'), 'utf8'));
+    expect(license.license).toEqual({ kind: 'consent-based', spdxIdentifier: null, carriedFrom: null });
+    expect(license.redistribution).toEqual({ allowed: false });
+    expect(license.usageBoundaries).toEqual({ allowed: ['技术解读视频'], prohibited: ['冒充本人实时对话'] });
+    expect(license.authorization).toMatchObject({
+      subjectName: '授权讲师 A',
+      relationship: '栏目主持人',
+      validFrom: '2026-09-01',
+      validUntil: '2028-08-31',
+      documentSha256: authorization.document.sha256,
+    });
+    // 授权文件本体（PDF 字节）绝不进 license，也绝不把 AI 原创伪装成授权声音
+    expect(JSON.stringify(license)).not.toContain('%PDF');
     const documentPath = path.join(env.libraryDir, 'voice-identities', identity.id, 'clone', 'authorization', authorization.document.fileName);
     await fs.appendFile(documentPath, 'tampered');
     await request(app).get(`/api/voice-identities/${identity.id}/clone-authorization/document`).expect(409);
