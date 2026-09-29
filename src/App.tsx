@@ -28,6 +28,7 @@ import { VoiceIdentityImportedProfileView } from './components/VoiceIdentityImpo
 import { VoiceIdentityReviewView } from './components/VoiceIdentityReviewView';
 import { VoiceIdentityValidationEntry } from './components/VoiceIdentityValidationEntry';
 import { DesktopGate } from './components/desktop/DesktopGate';
+import { ModelsView } from './components/models/ModelsView';
 import { saveFromUrl } from './desktop/fileDialogs';
 
 import { AudioItem, AudioFolder } from './types/audio';
@@ -601,6 +602,10 @@ export default function App() {
               onOpenEditor={(item) => setEditingItem(item)}
             />
           )}
+
+          {currentTab === 'models' && (
+            <ModelsView />
+          )}
         </main>
       </div>
 
@@ -653,7 +658,8 @@ export default function App() {
       {/* Voice Large Language Model Configuration Modal */}
       <VoiceModelConfigModal
         isOpen={isVoiceModelConfigOpen}
-        onClose={() => setIsVoiceModelConfigOpen(false)}
+        onClose={() => { setIsVoiceModelConfigOpen(false); }}
+        onOpenModels={() => { setIsVoiceModelConfigOpen(false); handleTabChange('models'); }}
       />
 
       {/* Subtitle SRT / VTT Export Modal */}
@@ -678,7 +684,7 @@ export default function App() {
       />
 
       {/* 桌面模式：首次启动向导 / 运行时状态中心（Web 模式不渲染） */}
-      <DesktopGate />
+      <DesktopGate onOpenModels={() => handleTabChange('models')} />
 
     </div>
   );

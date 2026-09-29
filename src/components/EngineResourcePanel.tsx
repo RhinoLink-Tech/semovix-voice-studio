@@ -91,7 +91,7 @@ function EngineRow({ engine, onUnload, unloading }: { engine: EngineResourceEntr
   );
 }
 
-export function EngineResourcePanel() {
+export function EngineResourcePanel({ onOpenModels }: { onOpenModels?: () => void }) {
   const { engines, process, workerReachable, refresh, unload, unloading, message, setMessage, mode } = useEngineResources();
   const workerEngines = engines.filter(e => WORKER_ENGINE_IDS.includes(e.id));
 
@@ -110,6 +110,11 @@ export function EngineResourcePanel() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {onOpenModels && (
+            <button type="button" onClick={onOpenModels} title="模型下载、删除与版本切换" className="text-[10px] text-cyan-300 hover:text-cyan-200 underline underline-offset-2 whitespace-nowrap">
+              在模型管理中查看
+            </button>
+          )}
           <span
             title={mode === 'sse' ? '事件流实时推送（SSE）' : '事件流不可用，已降级为定时轮询'}
             className={`text-[10px] px-1.5 py-0.5 rounded border ${mode === 'sse' ? 'text-emerald-300 border-emerald-900/60 bg-emerald-950/40' : 'text-amber-300 border-amber-900/60 bg-amber-950/40'}`}

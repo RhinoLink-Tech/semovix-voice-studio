@@ -41,6 +41,8 @@ interface VoiceModelConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfigChanged?: (newConfig: VoiceModelConfig) => void;
+  /** P1 #33：跳到模型管理页（下载/删除/版本切换） */
+  onOpenModels?: () => void;
 }
 
 type ConfigTab = 'models' | 'personas' | 'parameters' | 'dialogue' | 'instruction' | 'diagnostics';
@@ -49,6 +51,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   isOpen,
   onClose,
   onConfigChanged,
+  onOpenModels,
 }) => {
   const [config, setConfig] = useState<VoiceModelConfig>(getVoiceModelConfig());
   const [activeTab, setActiveTab] = useState<ConfigTab>('personas');
@@ -680,7 +683,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
               )}
 
               {/* 本地引擎资源与能力（P0-B #19-23）：能力/指纹/占用来自 Worker 自述，可手动卸载 */}
-              <EngineResourcePanel />
+              <EngineResourcePanel onOpenModels={onOpenModels} />
 
               {selection.catalogUnavailable ? (
                 <div className="text-center py-10 px-4 bg-neutral-950/60 border border-neutral-800 rounded-xl space-y-2">

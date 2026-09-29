@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Archive,
+  Boxes,
   FolderGit2,
   Layers,
   Mic,
@@ -12,7 +13,7 @@ import {
   Upload,
 } from 'lucide-react';
 
-export type StudioTab = 'library' | 'voice-identities' | 'tts' | 'sfx' | 'beat' | 'multitrack';
+export type StudioTab = 'library' | 'voice-identities' | 'tts' | 'sfx' | 'beat' | 'multitrack' | 'models';
 
 interface NavbarProps {
   currentTab: StudioTab;
@@ -37,6 +38,7 @@ const navigation = [
   { id: 'sfx', label: '智能音效', icon: Sparkles },
   { id: 'beat', label: '音乐与伴奏', icon: Music },
   { id: 'multitrack', label: '多轨混音', icon: Layers },
+  { id: 'models', label: '模型管理', icon: Boxes },
 ] as const;
 
 const SearchField: React.FC<Pick<NavbarProps, 'searchQuery' | 'onSearchChange'> & { placeholder?: string }> = ({

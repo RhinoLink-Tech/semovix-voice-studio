@@ -12,7 +12,7 @@ import type { DesktopAppInfo } from '../../../electron/shared/types';
 import { DesktopSetupWizard } from './DesktopSetupWizard';
 import { RuntimeStatusCenter } from './RuntimeStatusCenter';
 
-export function DesktopGate() {
+export function DesktopGate({ onOpenModels }: { onOpenModels?: () => void }) {
   const bridge = getDesktopBridge();
   const [appInfo, setAppInfo] = useState<DesktopAppInfo | null>(null);
   const [firstRunCompleted, setFirstRunCompleted] = useState<boolean | null>(null);
@@ -33,7 +33,7 @@ export function DesktopGate() {
   if (!bridge) return null;
   if (!appInfo || firstRunCompleted === null) return null;
   if (!firstRunCompleted) {
-    return <DesktopSetupWizard appInfo={appInfo} bridge={bridge} onComplete={() => setFirstRunCompleted(true)} />;
+    return <DesktopSetupWizard appInfo={appInfo} bridge={bridge} onComplete={() => setFirstRunCompleted(true)} onOpenModels={onOpenModels} />;
   }
   return <RuntimeStatusCenter bridge={bridge} />;
 }

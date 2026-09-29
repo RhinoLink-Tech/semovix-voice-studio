@@ -64,6 +64,8 @@ const MODEL_STATE_CLASS: Record<WizardModelState, string> = {
 interface Props {
   appInfo: DesktopAppInfo;
   onComplete: () => void;
+  /** P1 #33：跳到模型管理页查看下载进度（桌面宿主注入；缺省不显示链接） */
+  onOpenModels?: () => void;
 }
 
 interface WizardBridge {
@@ -76,7 +78,7 @@ interface WizardBridge {
   chooseFile(options?: { title?: string }): Promise<string | null>;
 }
 
-export function DesktopSetupWizard({ appInfo, onComplete, bridge }: Props & { bridge: WizardBridge }) {
+export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }: Props & { bridge: WizardBridge }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [setup, setSetup] = useState<DesktopSetup>(() => ({
     schemaVersion: 1,
@@ -92,6 +94,7 @@ export function DesktopSetupWizard({ appInfo, onComplete, bridge }: Props & { br
   const [error, setError] = useState<string | null>(null);
   const [condaEnv, setCondaEnv] = useState('qwen3-tts');
   const [pythonMode, setPythonMode] = useState<'conda' | 'bin' | 'auto'>('conda');
+  const [modelDownloads, setModelDownloads] = useState<Record<string, 'starting' | 'downloading' | 'error'>>({});
 
   useEffect(() => {
     void bridge.getSetup().then(existing => {
@@ -140,6 +143,25 @@ export function DesktopSetupWizard({ appInfo, onComplete, bridge }: Props & { br
 
   const deviceCheck = doctor?.checks.find(check => check.id === 'torch');
   const pythonCheck = doctor?.checks.find(check => check.id === 'python');
+
+  // P1 #33：向导内直接发起托管下载（真正的事实与进度在模型管理页）
+  const startModelDownload = useCallback(async (key: keyof DesktopSetup['models']) => {
+    setModelDownloads(prev => ({ ...prev, [key]: 'starting' }));
+    setError(null);
+    try {
+      const res = await fetch(`/api/models/${key}/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (res.status === 202) {
+        setModelDownloads(prev => ({ ...prev, [key]: 'downloading' }));
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setModelDownloads(prev => ({ ...prev, [key]: 'error' }));
+        setError(body.error || `启动下载失败（HTTP ${res.status}）。可在 Worker 启动后到「模型管理」页下载。`);
+      }
+    } catch {
+      setModelDownloads(prev => ({ ...prev, [key]: 'error' }));
+      setError('无法连接本地服务：请完成后续步骤启动 Worker 后，到「模型管理」页下载。');
+    }
+  }, []);
 
   const workerProcess = workerStatus?.processes.find(process => process.id === 'python-worker');
   const engineState = useCallback(
@@ -341,6 +363,16 @@ export function DesktopSetupWizard({ appInfo, onComplete, bridge }: Props & { br
                         <div className="text-xs text-neutral-500 font-mono truncate">{check?.message || setup.models[model.key] || '默认（HuggingFace）'}</div>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full border whitespace-nowrap ${MODEL_STATE_CLASS[state]}`}>{MODEL_STATE_TEXT[state]}</span>
+                      {state === 'needs_download' && (
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 rounded-md bg-cyan-500/90 hover:bg-cyan-400 disabled:opacity-60 text-xs text-neutral-950 font-medium whitespace-nowrap"
+                          disabled={modelDownloads[model.key] === 'downloading' || modelDownloads[model.key] === 'starting'}
+                          onClick={() => void startModelDownload(model.key)}
+                        >
+                          {modelDownloads[model.key] === 'downloading' ? '下载中…' : modelDownloads[model.key] === 'starting' ? '提交中…' : '下载（断点续传）'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-300 whitespace-nowrap"
@@ -355,6 +387,15 @@ export function DesktopSetupWizard({ appInfo, onComplete, bridge }: Props & { br
                   );
                 })}
               </div>
+              {onOpenModels && (
+                <button
+                  type="button"
+                  className="text-xs text-cyan-300 hover:text-cyan-200 underline underline-offset-4"
+                  onClick={onOpenModels}
+                >
+                  打开模型管理页查看下载进度与版本切换 →
+                </button>
+              )}
             </div>
           )}
 
