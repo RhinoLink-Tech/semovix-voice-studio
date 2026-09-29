@@ -9,10 +9,12 @@
  */
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { SETUP_SCHEMA_VERSION } from '../shared/types';
 import type { DesktopSetup, FileDialogOptions, ReadFileOptions, SaveFilePayload } from '../shared/types';
 import type { DesktopContext } from './context';
+import { buildDiagnosticsBundle } from './lib/diagnosticsBundle';
 
 const MAX_SAVE_BYTES = 512 * 1024 * 1024; // Profile ZIP / 长 WAV 也远小于此
 const MAX_READ_BYTES = 512 * 1024 * 1024; // 与 saveFile 对称
@@ -139,6 +141,40 @@ export function registerIpcHandlers(context: DesktopContext, getWindow: () => Br
 
   ipcMain.handle('desktop:open-logs', async () => {
     await shell.openPath(context.paths.logsDir);
+  });
+
+  // 诊断包（P1 #35）：采集脱敏快照 → 构包（lib 内完成路径/密钥双关卡）→ 保存对话框 → 原子写
+  ipcMain.handle('desktop:export-diagnostics', async () => {
+    const zipBytes = await buildDiagnosticsBundle({
+      appVersion: context.appVersion,
+      mode: context.mode,
+      platform: process.platform,
+      systemInfo: {
+        os: os.release(),
+        arch: process.arch,
+        electron: process.versions.electron,
+        chrome: process.versions.chrome,
+        node: process.versions.node,
+      },
+      doctor: context.getLastDoctor(),
+      runtimeStatus: await context.collectStatus(),
+      recentErrors: context.logger.getRecentErrors(),
+      logsDir: context.paths.logsDir,
+      setupFile: context.paths.setupFile,
+      homeDir: os.homedir(),
+    });
+    const window = getWindow();
+    const date = new Date().toISOString().slice(0, 10);
+    const result = await dialog.showSaveDialog(window!, {
+      defaultPath: `semovix-diagnostics-${date}.zip`,
+      filters: [{ name: 'ZIP', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    // 与 save-file 同规则：临时文件 + rename，导出半途失败不留残缺文件
+    const tmp = `${result.filePath}.semovix-tmp-${Date.now().toString(36)}`;
+    fs.writeFileSync(tmp, zipBytes);
+    fs.renameSync(tmp, result.filePath);
+    return result.filePath;
   });
 
   ipcMain.handle('desktop:get-setup', () => context.getSetup());

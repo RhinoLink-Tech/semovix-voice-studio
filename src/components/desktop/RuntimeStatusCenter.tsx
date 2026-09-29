@@ -68,6 +68,7 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
   const [toast, setToast] = useState<string | null>(null);
   const [maintenanceRunning, setMaintenanceRunning] = useState<'repair' | 'rebuild' | null>(null);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -137,6 +138,20 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
     }
   }, [bridge]);
 
+  // 导出诊断包（P1 #35）：主进程构建脱敏 ZIP 并落盘到用户选择的位置；只 toast 路径
+  const exportDiagnostics = useCallback(async () => {
+    setExportingDiagnostics(true);
+    setToast('正在构建诊断包…');
+    try {
+      const savedPath = await bridge.exportDiagnostics();
+      setToast(savedPath ? `诊断包已导出：${savedPath}` : '已取消导出');
+    } catch (e) {
+      setToast(`诊断包导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExportingDiagnostics(false);
+    }
+  }, [bridge]);
+
   const copyRecentErrors = useCallback(async () => {
     const errors = status?.recentErrors ?? [];
     if (errors.length === 0) {
@@ -194,6 +209,9 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
               </button>
               <button type="button" onClick={() => void bridge.openLogs()} className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200">
                 日志目录
+              </button>
+              <button type="button" onClick={() => void exportDiagnostics()} disabled={exportingDiagnostics} className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200 disabled:opacity-50" title="导出脱敏诊断 ZIP（版本/体检/状态/日志尾部），自行提交给支持渠道">
+                {exportingDiagnostics ? '导出中…' : '导出诊断包'}
               </button>
               <button type="button" onClick={() => setOpen(false)} className="px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-200 text-sm">
                 ✕

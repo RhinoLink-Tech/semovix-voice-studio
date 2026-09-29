@@ -208,6 +208,12 @@ export interface SemovoixDesktopBridge {
   saveFile(payload: SaveFilePayload): Promise<string | null>;
   revealInFolder(path: string): Promise<void>;
   openLogs(): Promise<void>;
+  /**
+   * 导出诊断包（P1 #35）：主进程采集脱敏快照（版本/系统/体检/状态/日志尾部/
+   * 清洗配置）→ 原生保存对话框 → 返回保存路径；取消返回 null。
+   * 内容在主进程构建，Renderer 不经手任何采集细节。
+   */
+  exportDiagnostics(): Promise<string | null>;
   /** 首次向导专用：读取/保存桌面配置（具体动作，字段受 DesktopSetup 约束） */
   getSetup(): Promise<DesktopSetup | null>;
   saveSetup(setup: DesktopSetup): Promise<DesktopSetup>;
