@@ -10,14 +10,15 @@ import { RefreshCw } from 'lucide-react';
 import './ModelsView.css';
 import { formatBytes, useModels } from '../../hooks/useModels';
 import { getDesktopBridge } from '../../desktop/desktopBridge';
+import { useAppCapabilities } from '../../desktop/capabilities';
 import { ModelRow } from './ModelRow';
 
 export const ModelsView: React.FC = () => {
   const { models, cacheRoot, disk, loading, busyKey, message, setMessage, refresh, download, cancel, remove, setRevision, unloadEngine, mode } = useModels();
+  const capabilities = useAppCapabilities();
 
   const revealPath = (target: string) => {
-    const bridge = getDesktopBridge();
-    if (bridge) void bridge.revealInFolder(target);
+    if (capabilities.revealInFolder) void getDesktopBridge()?.revealInFolder(target);
     else setMessage(`快照路径：${target}（Web 模式无法打开本地目录）`);
   };
 

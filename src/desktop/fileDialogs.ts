@@ -5,10 +5,11 @@
  * 组件只面对 File/Blob/Uint8Array，不感知运行模式。
  */
 import { getDesktopBridge } from './desktopBridge';
+import { getAppCapabilities } from './capabilities';
 
-/** 是否运行在桌面壳内（决定导入导出走原生对话框还是浏览器控件） */
+/** 是否运行在桌面壳内（决定导入导出走原生对话框还是浏览器控件）；语义入口见 capabilities.ts（P1 #38） */
 export function isDesktopMode(): boolean {
-  return getDesktopBridge() !== null;
+  return getAppCapabilities().desktop;
 }
 
 /**
