@@ -108,3 +108,10 @@ export function listGenerations(opts: { itemId?: string; limit?: number } = {}):
     : getDb().prepare('SELECT * FROM generations ORDER BY created_at DESC LIMIT ?').all(limit);
   return (rows as any[]).map(rowToRecord);
 }
+
+/** 按 id 单查一条生成记录（P2 #41 MCP get_generation；查无 → null） */
+export function getGenerationById(id: string): (GenerationRecord & { params?: Record<string, unknown> | null; created_at: string }) | null {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return null;
+  const row = getDb().prepare('SELECT * FROM generations WHERE id = ?').get(id) as any | undefined;
+  return row ? rowToRecord(row) : null;
+}

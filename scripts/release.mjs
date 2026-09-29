@@ -30,11 +30,13 @@ const stagingAppDir = path.join(releaseDir, 'staging', 'app');
 // 服务端运行面真实依赖（server/ 全量 import 的外部包；--packages=external 保持不打包）
 const SERVER_RUNTIME_DEPS = {
   '@google/genai': true,
+  '@modelcontextprotocol/sdk': true, // P2 #41 MCP 服务端
   'better-sqlite3': true,
   dotenv: true,
   express: true,
   jszip: true,
   multer: true,
+  zod: true, // P2 #41 MCP 工具入参 schema（server/mcp/tools.ts 直接 import）
 };
 
 const args = process.argv.slice(2);

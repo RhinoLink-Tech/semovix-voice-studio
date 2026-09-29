@@ -25,9 +25,14 @@ import { modelsRouter } from './routes/models';
 import { eventsRouter } from './routes/events';
 import { storageRouter } from './routes/storage';
 import { openaiCompatRouter } from './routes/openaiCompat';
+import { mcpRouter } from './routes/mcp';
 
 export function createApp(): express.Express {
   const app = express();
+
+  // P2 #41：MCP 端点必须先于全局 JSON 解析器挂载——transcribe 的 audioBase64
+  // （100MB ≈ 133MB base64 文本）超过下方 50mb 全局上限，路由自带更大解析器
+  app.use(mcpRouter);
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
