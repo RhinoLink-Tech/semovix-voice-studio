@@ -37,6 +37,38 @@ describe('GET /api/voice-model/status', () => {
     expect(voices.gemini.map(v => v.id)).toEqual(['Kore', 'Puck', 'Fenrir', 'Charon', 'Zephyr']);
     expect(voices.qwen3Tts).toEqual([]);
   });
+
+  it('reports the voice-clone engine and #19-23 supplement fields honestly when offline (P0-B)', async () => {
+    const res = await request(app).get('/api/voice-model/status').expect(200);
+
+    const engines = res.body.engines as Array<{
+      id: string; capabilities: unknown; modelInfo: unknown; lastUsedAt: unknown; inFlight: number;
+    }>;
+    // voice_clone 此前缺席状态面板；P0-B 补齐（qwen3-tts-voice-clone）
+    expect(engines.map(e => e.id)).toContain('qwen3-tts-voice-clone');
+    // Worker 不可达：增补字段如实缺省（null/0），不伪造能力或模型身份；进程资源为 null
+    for (const e of engines.filter(e => e.id.startsWith('qwen3-tts') || e.id === 'whisper-local')) {
+      expect(e.capabilities).toBeNull();
+      expect(e.modelInfo).toBeNull();
+      expect(e.lastUsedAt).toBeNull();
+      expect(e.inFlight).toBe(0);
+    }
+    expect(res.body.process).toBeNull();
+  });
+});
+
+describe('POST /api/engines/:engineId/unload (P0-B #21)', () => {
+  it('rejects unknown engines with 400', async () => {
+    const res = await request(app).post('/api/engines/gemini/unload').expect(400);
+    expect(res.body.code).toBe('invalid_request');
+  });
+
+  it('returns 503 engine_unavailable when the worker process is down (fetch disabled)', async () => {
+    for (const engineId of ['qwen_tts', 'voice_design', 'voice_clone', 'whisper_asr']) {
+      const res = await request(app).post(`/api/engines/${engineId}/unload`).expect(503);
+      expect(res.body.code).toBe('engine_unavailable');
+    }
+  });
 });
 
 describe('POST /api/generate-speech (validation only, no engine calls)', () => {

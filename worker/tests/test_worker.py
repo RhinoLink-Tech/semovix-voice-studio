@@ -12,6 +12,16 @@ Worker API 单元测试（P01 六：测试与 CI）
   - POST /tts/qwen     ready 后输出合法 RIFF/WAV；非官方 speaker 400；不支持语言 400
   - POST /asr/whisper  返回转录文本；空音频 400；不支持语言 400；长音频请求时间戳
 
+模型生命周期与资源治理（P0-B #19-23，TestModelLifecycle）：
+
+  - POST /unload/qwen  ready 且空闲 → 200 {state:"cold"} 载荷释放；在途推理 → 409 engine_busy
+  - #22 折中方案       warmup 另一个大模型 → 既有常驻大模型被卸载；在途推理 → 延迟淘汰
+  - #21 OOM            推理显存不足 → 载荷释放 + state=error（显式 warmup 才重载）
+  - #21 空闲巡检       _sweep_idle_once 卸载超时闲置引擎；在途推理豁免
+  - #19 能力合同       /health 每引擎自述 capabilities（语言来自运行时目录）
+  - #20 模型身份       /health modelInfo 报本地权重指纹 / provider / 设备
+  - #23 并发 = 1       /tts/qwen 并发请求被 infer_lock 串行化（max 并发 1）
+
 torch / librosa 以轻量伪模块注入 sys.modules：这里测的是端点契约，
 不依赖（也不下载）真实推理栈，CI 只需 requirements-base。
 """
@@ -21,6 +31,7 @@ import sys
 import threading
 import time
 import wave
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -439,3 +450,190 @@ class TestAsrEndpoint:
         r = client.post("/asr/whisper", files=wav_form(), data={"language": "auto"})
         assert r.status_code == 503
         assert r.json()["detail"]["code"] == "engine_not_ready"
+
+
+# ---------------- 模型生命周期与资源治理（P0-B #19-23） ----------------
+
+
+@pytest.fixture()
+def big_engines(monkeypatch):
+    """全新的大模型引擎三件套（#22 单常驻约束的测试隔离）"""
+    states = SimpleNamespace(
+        tts=worker.EngineState(id="qwen_tts"),
+        design=worker.EngineState(id="voice_design"),
+        clone=worker.EngineState(id="voice_clone"),
+    )
+    monkeypatch.setattr(worker, "_TTS", states.tts)
+    monkeypatch.setattr(worker, "_VOICE_DESIGN", states.design)
+    monkeypatch.setattr(worker, "_VOICE_CLONE", states.clone)
+    return states
+
+
+def warm_big_engine(monkeypatch, es: worker.EngineState, payload: dict) -> None:
+    monkeypatch.setitem(worker._BUILDERS, es.id, lambda: payload)
+    assert client.post(f"/warmup/{worker._WARMUP_PATH[es.id]}").status_code == 202
+    wait_for_state(es, "ready")
+
+
+class TestModelLifecycle:
+    def test_unload_releases_payload_and_returns_cold(self, big_engines, monkeypatch):
+        payload = tts_payload()
+        warm_big_engine(monkeypatch, big_engines.tts, payload)
+        assert big_engines.tts.state == "ready"
+
+        r = client.post("/unload/qwen")
+        assert r.status_code == 200
+        assert r.json() == {"engine": "qwen_tts", "state": "cold", "retry": False}
+        assert big_engines.tts.state == "cold"
+        assert big_engines.tts.model is None  # 载荷已释放，不是只改状态
+        assert big_engines.tts.loaded_at is None
+        assert big_engines.tts.last_used_at is None
+        # 冷引擎幂等：再次卸载仍是 200 cold
+        assert client.post("/unload/qwen").json()["state"] == "cold"
+        # 卸载后推理如实 503
+        assert client.post("/tts/qwen", json={"text": SMOKE_TEXT, "speaker": "uncle_fu"}).status_code == 503
+
+    def test_unload_refuses_loading_and_busy_engines(self, big_engines, monkeypatch):
+        warm_big_engine(monkeypatch, big_engines.tts, tts_payload())
+        big_engines.tts.state = "loading"  # 白盒：占住 loading 态
+        r = client.post("/unload/qwen")
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "engine_loading"
+        big_engines.tts.state = "ready"
+
+        big_engines.tts.in_flight = 1  # 白盒：模拟在途推理（真实由 _inference 记账）
+        r = client.post("/unload/qwen")
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "engine_busy"
+        assert big_engines.tts.state == "ready"  # 未被卸载
+        big_engines.tts.in_flight = 0
+
+    def test_warming_other_big_engine_unloads_resident(self, big_engines, monkeypatch):
+        """#22 折中方案：warmup voice_design 时，常驻的 qwen_tts 被显式卸载"""
+        warm_big_engine(monkeypatch, big_engines.tts, tts_payload())
+        warm_big_engine(
+            monkeypatch,
+            big_engines.design,
+            {"model": FakeVoiceDesignModel(), "device": "cpu", "checkpoint": "fake-voice-design"},
+        )
+        assert big_engines.design.state == "ready"
+        wait_for_state(big_engines.tts, "cold")  # 切换 = 卸载既有常驻者
+
+    def test_busy_resident_is_evicted_after_inference(self, big_engines, monkeypatch):
+        """#22 在途推理不被强拆：标记 evict_pending，推理结束后后台卸载"""
+        warm_big_engine(monkeypatch, big_engines.tts, tts_payload())
+        with worker._inference(big_engines.tts):
+            assert big_engines.tts.in_flight == 1
+            worker._evict_other_big_engines("voice_design")  # 模拟切换方触发的驱逐
+            assert big_engines.tts.evict_pending is True
+            assert big_engines.tts.state == "ready"  # 推理期间绝不卸载
+        wait_for_state(big_engines.tts, "cold")  # _inference 退出后延迟卸载
+        assert big_engines.tts.evict_pending is False
+
+    def test_oom_releases_payload_and_marks_error(self, big_engines, monkeypatch):
+        """#21/#23：推理 OOM → 释放载荷 + state=error；恢复只能显式 warmup（无自动重启循环）"""
+
+        class OomModel:
+            def generate_custom_voice(self, text, language, speaker, instruct):
+                raise MemoryError("MPS backend out of memory: try to allocate 2.0 GiB")
+
+        warm_big_engine(monkeypatch, big_engines.tts, {**tts_payload(), "model": OomModel()})
+        r = client.post("/tts/qwen", json={"text": SMOKE_TEXT, "speaker": "uncle_fu"})
+        assert r.status_code == 502
+        assert r.json()["detail"]["code"] == "resource_exhausted"
+        wait_for_state(big_engines.tts, "error")
+        assert big_engines.tts.model is None  # 资源已清理
+        assert "显存不足" in big_engines.tts.error
+        # 未就绪端点如实 503（error 态，不自动重载）
+        assert client.post("/tts/qwen", json={"text": SMOKE_TEXT, "speaker": "uncle_fu"}).status_code == 503
+
+    def test_sweep_idle_once_unloads_stale_engine(self, big_engines, monkeypatch):
+        """#21 空闲巡检：超阈值未使用 → 卸载；在途推理豁免；阈值 0 关闭"""
+        monkeypatch.setattr(worker, "IDLE_UNLOAD_SECONDS", 60.0)
+        warm_big_engine(monkeypatch, big_engines.tts, tts_payload())
+
+        big_engines.tts.in_flight = 1
+        assert worker._sweep_idle_once() == []  # 在途推理豁免
+        big_engines.tts.in_flight = 0
+
+        assert worker._sweep_idle_once() == []  # 刚就绪未超时（last_used/loaded 是现在）
+        big_engines.tts.last_used_at = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        assert worker._sweep_idle_once() == ["qwen_tts"]
+        assert big_engines.tts.state == "cold"
+
+    def test_health_reports_capabilities_contract(self, big_engines, monkeypatch):
+        """#19 能力合同：模型自述能力，qwen_tts 语言来自运行时目录（不是写死枚举）"""
+        warm_big_engine(monkeypatch, big_engines.tts, tts_payload())
+        engines_json = client.get("/health").json()["engines"]
+
+        tts_caps = engines_json["qwen_tts"]["capabilities"]
+        assert tts_caps["presetVoice"] is True
+        assert tts_caps["clone"] is False
+        assert tts_caps["transcription"] is False
+        assert tts_caps["languages"] == ["Auto", "Chinese", "English"]  # tts_payload 运行时目录
+        assert tts_caps["supportsReferenceAudio"] is False
+
+        clone_caps = engines_json["voice_clone"]["capabilities"]  # 冷引擎也有静态能力合同
+        assert clone_caps["clone"] is True
+        assert clone_caps["supportsReferenceAudio"] is True
+        asr_caps = engines_json["whisper_asr"]["capabilities"]
+        assert asr_caps["transcription"] is True
+        assert asr_caps["presetVoice"] is False
+
+    def test_health_reports_model_identity_fingerprint(self, big_engines, monkeypatch, tmp_path):
+        """#20 模型身份：本地目录 → 权重指纹（内容变化 → 指纹变化）；provider/设备如实上报"""
+        model_dir = tmp_path / "Qwen3-TTS-CustomVoice"
+        model_dir.mkdir()
+        (model_dir / "config.json").write_text('{"model_type": "qwen3_tts"}', encoding="utf-8")
+        (model_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+
+        payload = {**tts_payload(), "checkpoint": str(model_dir)}
+        warm_big_engine(monkeypatch, big_engines.tts, payload)
+        info = client.get("/health").json()["engines"]["qwen_tts"]["modelInfo"]
+        assert info["localPath"] == str(model_dir)
+        assert info["repoId"] == str(model_dir)
+        assert info["provider"] == "Qwen"
+        fingerprint = info["localPathFingerprint"]
+        assert fingerprint and len(fingerprint) == 16
+
+        (model_dir / "config.json").write_text('{"model_type": "qwen3_tts_v2"}', encoding="utf-8")
+        assert worker._fingerprint_dir(model_dir) != fingerprint  # 静默升级可被检测
+
+        asr_info = client.get("/health").json()["engines"]["whisper_asr"]["modelInfo"]
+        assert asr_info["provider"] == "OpenAI"  # 冷引擎也上报目标 checkpoint 身份
+        assert asr_info["localPathFingerprint"] is None
+
+    def test_tts_qwen_serializes_concurrent_inference(self, big_engines, monkeypatch):
+        """#23 每引擎并发 = 1：两个并发请求被 infer_lock 串行化，inFlight 收敛回 0"""
+
+        class CountingModel:
+            def __init__(self):
+                self._guard = threading.Lock()
+                self.active = 0
+                self.max_active = 0
+
+            def generate_custom_voice(self, text, language, speaker, instruct):
+                with self._guard:
+                    self.active += 1
+                    self.max_active = max(self.max_active, self.active)
+                time.sleep(0.15)
+                with self._guard:
+                    self.active -= 1
+                return [np.zeros(2400, dtype=np.float32)], 24000
+
+        model = CountingModel()
+        warm_big_engine(monkeypatch, big_engines.tts, {**tts_payload(), "model": model})
+
+        results: list = []
+
+        def post():
+            results.append(client.post("/tts/qwen", json={"text": SMOKE_TEXT, "speaker": "uncle_fu"}))
+
+        threads = [threading.Thread(target=post) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        assert all(r.status_code == 200 for r in results)
+        assert model.max_active == 1  # 绝不并行进入推理
+        assert client.get("/health").json()["engines"]["qwen_tts"]["inFlight"] == 0

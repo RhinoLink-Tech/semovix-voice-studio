@@ -4,7 +4,7 @@ import path from 'path';
 import { Router } from 'express';
 import { getConfig } from '../config';
 import { parseWav } from '../audio/wav';
-import { qwenVoiceCatalog, resolveQwenSpeaker } from '../engines/qwenWorker';
+import { captureModelIdentity, qwenVoiceCatalog, resolveQwenSpeaker } from '../engines/qwenWorker';
 import { submitJob } from '../jobs/runner';
 import { deleteJob, findByIdempotencyKey } from '../jobs/store';
 import { IdempotencyConflictError } from '../jobs/errors';
@@ -289,7 +289,15 @@ voiceSourceLifecycleRouter.post('/voice-identities/:identityId/source-voice-prof
       await fs.writeFile(path.join(directory, 'validation-report.json'), validationContent, { flag: 'wx' });
       const manifest = {
         schemaVersion: 2, identity: { id: identityId, name: sourceResult.identity.name, sourceType: sourceResult.source }, version: decision.profileVersion, profileName: decision.profileName, frozenAt: now(),
-        productionModel: validation.snapshot.productionModel, language: sourceResult.identity.language, usageBoundaries: decision.usageBoundaries,
+        productionModel: validation.snapshot.productionModel,
+        // #20 模型版本精确锁定：按来源选定引擎，向 Worker 捕获身份（repo/revision/本地权重指纹）。
+        // 导入来源没有本地推理 → 如实 null；Worker 不可达也记 null，绝不编造身份
+        model: sourceResult.source === '授权真人克隆'
+          ? await captureModelIdentity('voice_clone')
+          : sourceResult.source === 'Provider 预置音色'
+            ? await captureModelIdentity('qwen_tts')
+            : null,
+        language: sourceResult.identity.language, usageBoundaries: decision.usageBoundaries,
         source: validation.snapshot, validation: { report: { file: 'validation-report.json', sha256: hash(validationContent) }, humanListeningConfirmed: true, completedAt: validation.completedAt, textConsistency: validation.textConsistency, checks: validation.checks },
         referenceAudio: { file: 'reference.wav', sha256: validation.audio.sha256, duration: validation.audio.duration, sampleRate: validation.audio.sampleRate },
       };

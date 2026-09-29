@@ -22,7 +22,7 @@ import {
   type ValidationRun,
 } from '../../routes/voiceLifecycle';
 import { batchRoot } from '../../routes/voiceDesign';
-import { qwenWorkerVoiceClone, waitForWorkerEngineReady, whisperWorkerTranscribe } from '../../engines/qwenWorker';
+import { captureModelIdentity, qwenWorkerVoiceClone, waitForWorkerEngineReady, whisperWorkerTranscribe } from '../../engines/qwenWorker';
 import { extractPcm16, wavDuration } from '../../audio/wav';
 
 const ACTIVE_DOMAIN_STATUSES = new Set(['queued', 'warming', 'running']);
@@ -133,6 +133,8 @@ async function execute(ctx: JobContext, ref: JobPayloadRef): Promise<void> {
   await writeValidationRun(run);
   await waitForWorkerEngineReady('voice_clone', { timeoutMs: 600_000, pollIntervalMs: 2_000, signal: ctx.signal });
   await waitForWorkerEngineReady('whisper_asr', { timeoutMs: 600_000, pollIntervalMs: 2_000, signal: ctx.signal });
+  // #20 在推理时刻捕获生产模型身份（引擎已 ready，权重指纹完整）；续跑不重复捕获
+  if (!run.modelIdentity) run.modelIdentity = await captureModelIdentity('voice_clone');
   ctx.setTimeoutStage('inference');
   run.status = 'running';
   await writeValidationRun(run);

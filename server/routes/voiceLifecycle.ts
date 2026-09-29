@@ -8,6 +8,7 @@ import { deleteJob, findByIdempotencyKey } from '../jobs/store';
 import { IdempotencyConflictError } from '../jobs/errors';
 import '../jobs/executors/stabilityValidation';
 import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities';
+import { captureModelIdentity, type WorkerModelIdentity } from '../engines/qwenWorker';
 
 export const voiceLifecycleRouter = Router();
 
@@ -79,6 +80,8 @@ export type ValidationRun = {
   batchId: string;
   status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled';
   model: string;
+  /** #20 推理时刻捕获的生产模型身份（权重指纹/版本/设备）；冻结 Manifest 时带出，防静默升级 */
+  modelIdentity?: (WorkerModelIdentity & { capturedAt: string }) | null;
   createdAt: string;
   updatedAt: string;
   completedOutputs: number;
@@ -337,6 +340,9 @@ voiceLifecycleRouter.post('/voice-identities/:identityId/voice-profiles', async 
     referenceCandidate: `#${String(candidateId).padStart(3, '0')}`,
     referenceAudio: { file: 'reference.wav', sha256: referenceCandidate.sha256, duration: referenceCandidate.duration ?? null },
     productionModel: BASE_MODEL,
+    // #20 模型版本精确锁定：优先用验证推理时刻捕获的身份（含权重指纹），
+    // 记录缺失时退回冻结时刻的 Worker 查询；两者皆不可得 → 如实记 null，绝不编造
+    model: validationRun.modelIdentity ?? await captureModelIdentity('voice_clone'),
     language: batch.snapshot.language,
     referenceText: batch.snapshot.reference,
     designBatch: { id: batchId, model: batch.snapshot.model },

@@ -18,6 +18,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { VoiceModelConfig } from '../types/audio';
+import { EngineResourcePanel } from './EngineResourcePanel';
 import {
   getVoiceModelConfig,
   saveVoiceModelConfig,
@@ -675,6 +676,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                   )}
                 </div>
               )}
+
+              {/* 本地引擎资源与能力（P0-B #19-23）：能力/指纹/占用来自 Worker 自述，可手动卸载 */}
+              <EngineResourcePanel />
 
               {selection.catalogUnavailable ? (
                 <div className="text-center py-10 px-4 bg-neutral-950/60 border border-neutral-800 rounded-xl space-y-2">

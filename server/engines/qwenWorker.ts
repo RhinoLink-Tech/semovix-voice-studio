@@ -14,10 +14,51 @@ import { EngineValidationError } from './errors';
 export type WorkerEngineId = 'qwen_tts' | 'voice_design' | 'voice_clone' | 'whisper_asr';
 export type WorkerEngineState = 'cold' | 'loading' | 'ready' | 'error';
 
+/** #19 引擎能力合同：由模型/Worker 自述，页面不得按模型名猜测能力 */
+export interface WorkerEngineCapabilities {
+  presetVoice: boolean;
+  design: boolean;
+  clone: boolean;
+  transcription: boolean;
+  languages: string[];
+  sampleRateHz: number | null;
+  supportsSeed: boolean;
+  supportsReferenceAudio: boolean;
+  supportsStreaming: boolean;
+}
+
+/** #20 模型身份：repo/revision/本地权重指纹/运行时版本/设备（冻结进 Manifest，防静默升级） */
+export interface WorkerModelIdentity {
+  provider: string;
+  repoId: string;
+  revision: string | null;
+  localPath: string | null;
+  localPathFingerprint: string | null;
+  runtimeVersion: string | null;
+  torchVersion: string | null;
+  deviceType: string | null;
+  dtype: string | null;
+}
+
 export interface WorkerEngineSnapshot {
   state: WorkerEngineState;
   available: boolean; // ≡ state === 'ready'
   error: string | null;
+  /** P0-B #19-23 增补字段：Worker 未上报时不挂键（旧 Worker 兼容） */
+  checkpoint?: string | null;
+  lastUsedAt?: string | null;
+  inFlight?: number;
+  evictPending?: boolean;
+  capabilities?: WorkerEngineCapabilities;
+  modelInfo?: WorkerModelIdentity;
+}
+
+/** #21 进程级资源可见性：Worker /health 顶层 process 段 */
+export interface WorkerProcessInfo {
+  residentMb?: number | null;
+  peakMb?: number | null;
+  idleUnloadSeconds?: number;
+  residentBigEngines?: string[];
 }
 
 export interface WorkerStatus {
@@ -26,6 +67,7 @@ export interface WorkerStatus {
   voice_design: WorkerEngineSnapshot;
   voice_clone: WorkerEngineSnapshot;
   whisper_asr: WorkerEngineSnapshot;
+  process?: WorkerProcessInfo;
 }
 
 function unreachable(): WorkerStatus {
@@ -42,20 +84,39 @@ function normalizeEngineState(state: unknown, available: unknown): WorkerEngineS
 /**
  * Worker 状态查询（GET /health，永不触发加载）。
  * 进程不可达 → { reachable: false }；状态与真实错误如实透传。
+ * #19-23 增补字段（capabilities/modelInfo/lastUsedAt/inFlight 等）条件透传：旧 Worker 不上报时缺省。
  */
 export async function getWorkerStatus(): Promise<WorkerStatus> {
   try {
     const res = await fetch(`${workerUrl()}/health`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return unreachable();
     const data = (await res.json()) as {
-      engines?: Record<WorkerEngineId, { state?: string; available?: boolean; error?: string | null }>;
+      engines?: Record<WorkerEngineId, Record<string, unknown>>;
+      process?: WorkerProcessInfo;
     };
     const snap = (id: WorkerEngineId): WorkerEngineSnapshot => {
-      const raw = data.engines?.[id];
-      const state = normalizeEngineState(raw?.state, raw?.available);
-      return { state, available: state === 'ready', error: raw?.error ?? null };
+      const raw = data.engines?.[id] ?? {};
+      const state = normalizeEngineState(raw.state, raw.available);
+      return {
+        state,
+        available: state === 'ready',
+        error: (raw.error as string | null) ?? null,
+        ...(raw.checkpoint !== undefined ? { checkpoint: raw.checkpoint as string | null } : {}),
+        ...(raw.lastUsedAt !== undefined ? { lastUsedAt: raw.lastUsedAt as string | null } : {}),
+        ...(raw.inFlight !== undefined ? { inFlight: Number(raw.inFlight) || 0 } : {}),
+        ...(raw.evictPending !== undefined ? { evictPending: raw.evictPending === true } : {}),
+        ...(raw.capabilities !== undefined ? { capabilities: raw.capabilities as WorkerEngineCapabilities } : {}),
+        ...(raw.modelInfo !== undefined ? { modelInfo: raw.modelInfo as WorkerModelIdentity } : {}),
+      };
     };
-    return { reachable: true, qwen_tts: snap('qwen_tts'), voice_design: snap('voice_design'), voice_clone: snap('voice_clone'), whisper_asr: snap('whisper_asr') };
+    return {
+      reachable: true,
+      qwen_tts: snap('qwen_tts'),
+      voice_design: snap('voice_design'),
+      voice_clone: snap('voice_clone'),
+      whisper_asr: snap('whisper_asr'),
+      ...(data.process !== undefined ? { process: data.process } : {}),
+    };
   } catch {
     return unreachable();
   }
@@ -90,6 +151,51 @@ export async function warmupWorkerEngine(engine: WorkerEngineId): Promise<Warmup
     return { state: body.state === 'error' ? 'error' : 'loading', error: body.error ?? null };
   }
   throw new Error(`Worker 预热 ${engine} 失败 (HTTP ${res.status})`);
+}
+
+/** #21 显式卸载被拒：引擎在途推理（engine_busy）或正在加载（engine_loading） */
+export class WorkerEngineBusyError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'engine_busy' | 'engine_loading'
+  ) {
+    super(message);
+    this.name = 'WorkerEngineBusyError';
+  }
+}
+
+/**
+ * 显式卸载（POST /unload/{segment}，P0-B #21）：ready 且无在途推理 → 释放权重与显存、
+ * 引擎回到 cold（幂等）。在途推理/加载中 → 抛 WorkerEngineBusyError（由路由映射 409）。
+ * 卸载含 gc/显存缓存清理，超时放宽到 30s。
+ */
+export async function unloadWorkerEngine(engine: WorkerEngineId): Promise<{ state: WorkerEngineState }> {
+  const res = await fetch(`${workerUrl()}/unload/${WARMUP_PATH[engine]}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(30_000),
+  });
+  let body: { state?: string; detail?: { error?: string; code?: string } } = {};
+  try {
+    body = (await res.json()) as { state?: string; detail?: { error?: string; code?: string } };
+  } catch {
+    /* 空 body：按状态码推断 */
+  }
+  if (res.ok) return { state: body.state === 'ready' ? 'ready' : 'cold' };
+  if (res.status === 409) {
+    const code = body.detail?.code === 'engine_loading' ? 'engine_loading' : 'engine_busy';
+    throw new WorkerEngineBusyError(body.detail?.error || `引擎 ${engine} 正忙，暂不能卸载`, code);
+  }
+  throw new Error(`Worker 卸载 ${engine} 失败 (HTTP ${res.status})`);
+}
+
+/**
+ * #20 冻结 Voice Profile 用的模型身份块：Worker 可达且该引擎已上报 modelInfo 时返回
+ * （附捕获时间），否则 null——调用方如实记录 null，不得编造身份。
+ */
+export async function captureModelIdentity(engine: WorkerEngineId): Promise<(WorkerModelIdentity & { capturedAt: string }) | null> {
+  const status = await getWorkerStatus();
+  const info = status.reachable ? status[engine].modelInfo : undefined;
+  return info ? { ...info, capturedAt: new Date().toISOString() } : null;
 }
 
 /** 可用性/预热等待失败：路由层统一映射为 503（engine_unavailable / engine_warmup_timeout） */

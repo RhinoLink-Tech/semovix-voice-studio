@@ -10,7 +10,7 @@ import { pcmToWavBuffer, wavDuration, concatWavBuffers, parseWav } from '../audi
 import { applySpeedToWav } from '../audio/wsola';
 import { getGeminiClient, hasGeminiApiKey } from './geminiClient';
 import { EngineValidationError } from './errors';
-import { getWorkerStatus, qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady } from './qwenWorker';
+import { getWorkerStatus, qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady, type WorkerEngineCapabilities } from './qwenWorker';
 
 export interface TTSSynthesizeRequest {
   text: string;
@@ -35,6 +35,8 @@ export interface TTSEngineAdapter {
   id: string;
   label: string;
   requiresApiKey: boolean;
+  /** #19 能力合同：引擎自述能力（页面据此展示，不得按模型名猜测）。不替代 adapter 本身的路由职责。 */
+  capabilities: WorkerEngineCapabilities;
   isAvailable(): Promise<boolean>;
   synthesize(req: TTSSynthesizeRequest): Promise<TTSSynthesizeResult>;
 }
@@ -45,6 +47,17 @@ export const geminiAdapter: TTSEngineAdapter = {
   id: 'gemini',
   label: 'Google Gemini Audio',
   requiresApiKey: true,
+  capabilities: {
+    presetVoice: true,
+    design: false,
+    clone: false,
+    transcription: false,
+    languages: ['中文', '英文', '多语种文本朗读'],
+    sampleRateHz: 24000,
+    supportsSeed: false,
+    supportsReferenceAudio: false,
+    supportsStreaming: false,
+  },
   isAvailable: async () => hasGeminiApiKey(),
   async synthesize(req) {
     const ai = getGeminiClient();
@@ -150,6 +163,19 @@ export const qwenLocalAdapter: TTSEngineAdapter = {
   id: 'qwen3-tts-local',
   label: 'Qwen3-TTS 1.7B (Worker)',
   requiresApiKey: false,
+  // #19 静态声明（本 adapter 只承载 CustomVoice 预置音色引擎）；语言/音色目录以 Worker
+  // /health 与 /voices 运行时自述为准（见 /api/voice-model/status 的 capabilities 字段）
+  capabilities: {
+    presetVoice: true,
+    design: false,
+    clone: false,
+    transcription: false,
+    languages: ['Auto', 'Chinese', 'English'],
+    sampleRateHz: 24000,
+    supportsSeed: false,
+    supportsReferenceAudio: false,
+    supportsStreaming: false,
+  },
   // 仅供状态面板使用（ready 才算可用）；调用链路不走此预检——cold 也有机会加载（P01）
   isAvailable: async () => {
     const status = await getWorkerStatus();
