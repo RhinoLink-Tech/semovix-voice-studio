@@ -20,6 +20,8 @@ export interface AppPaths {
   tempDir: string;
   logsDir: string;
   cacheDir: string;
+  /** 托管 Python 运行时目录（P1 #31：uv 二进制 / Python / venv / state.json） */
+  runtimeDir: string;
   setupFile: string;
 }
 
@@ -34,6 +36,7 @@ export function buildAppPaths(userDataDir: string): AppPaths {
     tempDir: path.join(userDataDir, 'temp'),
     logsDir: path.join(userDataDir, 'logs'),
     cacheDir: path.join(userDataDir, 'cache'),
+    runtimeDir: path.join(userDataDir, 'runtime'),
     setupFile: path.join(configDir, 'desktop.json'),
   };
 }
@@ -47,6 +50,7 @@ export function ensureAppDirs(paths: AppPaths): void {
     paths.tempDir,
     paths.logsDir,
     paths.cacheDir,
+    paths.runtimeDir,
   ]) {
     fs.mkdirSync(dir, { recursive: true });
   }

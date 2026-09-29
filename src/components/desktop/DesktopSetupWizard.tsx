@@ -8,10 +8,12 @@
  * 正在加载 / 已就绪 / 加载失败 来自 Worker 引擎状态。
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { SETUP_SCHEMA_VERSION } from '../../../electron/shared/types';
 import type {
   DesktopAppInfo,
   DesktopSetup,
   DoctorReport,
+  ManagedRuntimePhase,
   RuntimeStatus,
   WizardModelState,
 } from '../../../electron/shared/types';
@@ -61,6 +63,17 @@ const MODEL_STATE_CLASS: Record<WizardModelState, string> = {
   load_failed: 'text-red-400 bg-red-500/10 border-red-500/30',
 };
 
+/** 托管运行时各阶段的人可读进度（P1 #31，与 userData/runtime/state.json 对应） */
+const MANAGED_PHASE_TEXT: Record<ManagedRuntimePhase, string> = {
+  absent: '未开始',
+  'fetching-uv': '下载 uv（版本锁定 + SHA256 校验）…',
+  'installing-python': '安装 Python 3.12…',
+  'creating-venv': '创建虚拟环境…',
+  'syncing-deps': '安装依赖（锁定版本，含 torch 可能需要数分钟）…',
+  ready: '就绪',
+  failed: '失败',
+};
+
 interface Props {
   appInfo: DesktopAppInfo;
   onComplete: () => void;
@@ -81,7 +94,7 @@ interface WizardBridge {
 export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }: Props & { bridge: WizardBridge }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [setup, setSetup] = useState<DesktopSetup>(() => ({
-    schemaVersion: 1,
+    schemaVersion: SETUP_SCHEMA_VERSION,
     libraryDir: null,
     python: null,
     models: { customVoice: '', voiceDesign: '', base: '', asr: '' },
@@ -93,7 +106,7 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [condaEnv, setCondaEnv] = useState('qwen3-tts');
-  const [pythonMode, setPythonMode] = useState<'conda' | 'bin' | 'auto'>('conda');
+  const [pythonMode, setPythonMode] = useState<'managed' | 'conda' | 'bin' | 'auto'>('managed');
   const [modelDownloads, setModelDownloads] = useState<Record<string, 'starting' | 'downloading' | 'error'>>({});
 
   useEffect(() => {
@@ -101,6 +114,7 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
       if (existing) {
         setSetup(existing);
         if (existing.python?.kind === 'conda') setCondaEnv(existing.python.env || 'qwen3-tts');
+        if (existing.python?.kind === 'managed') setPythonMode('managed');
       }
     });
   }, [bridge]);
@@ -113,13 +127,18 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
     }
   }, [bridge]);
 
-  // Worker 启动步骤：轮询运行时状态以展示引擎加载进度
+  const step = WIZARD_STEPS[stepIndex];
+
+  // Worker 启动步骤：轮询运行时状态以展示引擎加载进度；
+  // 托管运行时安装中（P1 #31）同样轮询——saveSetup 要等安装完成才返回，
+  // 阶段进度只能从 runtime-status 的 environment.managedRuntime 读
+  const managedInstalling = step.key === 'python' && pythonMode === 'managed' && doctorRunning;
   useEffect(() => {
-    if (WIZARD_STEPS[stepIndex].key !== 'worker') return;
+    if (WIZARD_STEPS[stepIndex].key !== 'worker' && !managedInstalling) return;
     void refreshStatus();
     const timer = setInterval(() => void refreshStatus(), 2000);
     return () => clearInterval(timer);
-  }, [stepIndex, refreshStatus]);
+  }, [stepIndex, managedInstalling, refreshStatus]);
 
   const runDoctor = useCallback(
     async (patch?: Partial<DesktopSetup>) => {
@@ -175,8 +194,6 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
     },
     [workerStatus],
   );
-
-  const step = WIZARD_STEPS[stepIndex];
 
   const goTo = (index: number) => {
     setError(null);
@@ -274,6 +291,15 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
               <h2 className="text-xl font-semibold text-neutral-100">选择 Python / Conda 环境</h2>
               <p className="text-neutral-400 text-sm">Worker 需要一个安装了推理依赖（torch / qwen_tts / transformers）的 Python 环境。</p>
               <div className="space-y-2">
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${pythonMode === 'managed' ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-neutral-800 hover:border-neutral-700'}`}>
+                  <input type="radio" checked={pythonMode === 'managed'} onChange={() => setPythonMode('managed')} className="mt-1 accent-emerald-500" />
+                  <span className="flex-1">
+                    <span className="text-sm text-neutral-200">自动安装托管运行时（推荐）</span>
+                    <span className="block text-xs text-neutral-500 mt-0.5">
+                      应用自动下载 uv 与 Python 3.12，按锁定版本安装全部依赖到数据目录——无需自备 Conda / Python，全程可镜像加速。
+                    </span>
+                  </span>
+                </label>
                 <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${pythonMode === 'conda' ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-neutral-800 hover:border-neutral-700'}`}>
                   <input type="radio" checked={pythonMode === 'conda'} onChange={() => setPythonMode('conda')} className="mt-1 accent-emerald-500" />
                   <span className="flex-1">
@@ -315,6 +341,23 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
                   </span>
                 </label>
               </div>
+              {pythonMode === 'managed' && workerStatus?.environment.managedRuntime && (
+                <div className={`rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${workerStatus.environment.managedRuntime.phase === 'ready' ? 'bg-emerald-400' : workerStatus.environment.managedRuntime.phase === 'failed' ? 'bg-red-400' : 'bg-sky-400 animate-pulse'}`} />
+                    <span className="font-medium">托管运行时：{MANAGED_PHASE_TEXT[workerStatus.environment.managedRuntime.phase]}</span>
+                  </div>
+                  {workerStatus.environment.managedRuntime.error && (
+                    <div className="text-red-300/90 break-all">{workerStatus.environment.managedRuntime.error}</div>
+                  )}
+                </div>
+              )}
               {pythonCheck && (
                 <div className={`text-sm ${pythonCheck.state === 'pass' ? 'text-emerald-400' : 'text-red-400'}`}>
                   已验证：Python {doctor?.python?.version} · {doctor?.python?.path}
@@ -513,12 +556,16 @@ export function DesktopSetupWizard({ appInfo, onComplete, onOpenModels, bridge }
                 if (step.key === 'python') {
                   setBusy(true);
                   try {
+                    // managed（P1 #31）：saveSetup 触发 applySetup → ensureManagedRuntime，
+                    // 安装耗时数分钟，进度经 runtime-status 轮询展示（见 managedInstalling）
                     const python =
-                      pythonMode === 'conda'
-                        ? { kind: 'conda' as const, env: condaEnv.trim() || 'qwen3-tts' }
-                        : pythonMode === 'bin' && setup.python?.kind === 'bin'
-                          ? setup.python
-                          : null;
+                      pythonMode === 'managed'
+                        ? { kind: 'managed' as const }
+                        : pythonMode === 'conda'
+                          ? { kind: 'conda' as const, env: condaEnv.trim() || 'qwen3-tts' }
+                          : pythonMode === 'bin' && setup.python?.kind === 'bin'
+                            ? setup.python
+                            : null;
                     const report = await runDoctor({ python });
                     if (!report) return;
                     if (report.error) {

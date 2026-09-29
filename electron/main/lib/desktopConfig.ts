@@ -6,9 +6,12 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { SETUP_SCHEMA_VERSION } from '../../shared/types';
 import type { DesktopSetup, ModelSetup, PythonSetup } from '../../shared/types';
 
-export const SETUP_SCHEMA_VERSION = 1;
+// 版本常量已上移到 shared/types（P1 #31：renderer 向导与 main 校验共用同一真相）；
+// 在此重导出以兼容既有 import 路径。
+export { SETUP_SCHEMA_VERSION };
 
 /**
  * 模型路径约定：空串 = 未配置 → 不注入 SEMOVIX_* 环境变量，
@@ -31,6 +34,10 @@ function isNonEmptyString(value: unknown): value is string {
 function normalizePython(raw: unknown): PythonSetup | null {
   if (!raw || typeof raw !== 'object') return null;
   const candidate = raw as Record<string, unknown>;
+  // managed（P1 #31）：解释器由应用托管（uv + 锁文件），无路径可校验
+  if (candidate.kind === 'managed') {
+    return { kind: 'managed' };
+  }
   if (candidate.kind === 'bin' && isNonEmptyString(candidate.path)) {
     return { kind: 'bin', path: candidate.path };
   }

@@ -354,6 +354,11 @@ export interface PythonWorkerOptions extends BaseSupervisorOptions {
   models: { customVoice: string; voiceDesign: string; base: string; asr: string };
   /** 托管 HF 缓存目录（P1 #32）：注入 Worker 的 HF_HOME；缺省不注入（Worker 用系统默认缓存） */
   modelCacheDir?: string;
+  /**
+   * 托管运行时 venv 解释器（P1 #31，kind='managed' 时由 context 注入）：
+   * applySetup/restart 前置 ensureManagedRuntime 保证其存在。
+   */
+  managedPythonPath?: string;
 }
 
 export class PythonWorkerSupervisor extends ProcessSupervisor {
@@ -366,7 +371,7 @@ export class PythonWorkerSupervisor extends ProcessSupervisor {
   }
 
   /** 向导保存 Python / 模型配置后热更新（需 restart 才对新进程生效） */
-  updateOptions(patch: Partial<Pick<PythonWorkerOptions, 'python' | 'models'>>): void {
+  updateOptions(patch: Partial<Pick<PythonWorkerOptions, 'python' | 'models' | 'managedPythonPath'>>): void {
     this.options = { ...this.options, ...patch };
   }
 
@@ -380,20 +385,23 @@ export class PythonWorkerSupervisor extends ProcessSupervisor {
   }
 
   protected buildCommand() {
-    const { python, workerRoot, port, models, modelCacheDir } = this.options;
+    const { python, workerRoot, port, models, modelCacheDir, managedPythonPath } = this.options;
     const baseArgs = ['-m', 'uvicorn', 'app:app', '--host', '127.0.0.1', '--port', String(port)];
-    // 解释器解析优先级与 worker/启动Worker.command 一致：
-    // bin > conda env > PATH 上的 python3
+    // 解释器解析优先级：managed（P1 #31 托管 venv）> bin > conda env > PATH 上的 python3。
+    // managed 分支的路径由 context 在启动前 ensure 后注入；缺失时退回 python3 兜底
+    //（applySetup 正常流程不会走到——ensure 失败即抛错跳过启动）。
     const command: { command: string; args: string[] } =
-      python?.kind === 'bin' && python.path
-        ? { command: python.path, args: baseArgs }
-        : python?.kind === 'conda'
-          ? {
-              // GUI 进程不继承 shell 的 conda 函数：先解析绝对路径，解析不到再退回裸命令
-              command: resolveCondaBinary() ?? 'conda',
-              args: ['run', '--no-capture-output', '-n', python.env || 'qwen3-tts', 'python', ...baseArgs],
-            }
-          : { command: 'python3', args: baseArgs };
+      python?.kind === 'managed' && managedPythonPath
+        ? { command: managedPythonPath, args: baseArgs }
+        : python?.kind === 'bin' && python.path
+          ? { command: python.path, args: baseArgs }
+          : python?.kind === 'conda'
+            ? {
+                // GUI 进程不继承 shell 的 conda 函数：先解析绝对路径，解析不到再退回裸命令
+                command: resolveCondaBinary() ?? 'conda',
+                args: ['run', '--no-capture-output', '-n', python.env || 'qwen3-tts', 'python', ...baseArgs],
+              }
+            : { command: 'python3', args: baseArgs };
 
     // 空串 = 未配置 → 不注入，Worker 落回内置默认与项目 .env（不覆盖既有本地权重）
     const modelEnv: Record<string, string> = {};

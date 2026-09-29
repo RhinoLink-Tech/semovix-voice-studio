@@ -39,6 +39,17 @@ function stateColor(state: string): string {
   return 'text-neutral-400';
 }
 
+/** 托管运行时阶段（P1 #31）——与 main/lib/managedRuntime 的状态机一致 */
+const MANAGED_PHASE_LABEL: Record<string, string> = {
+  absent: '未开始',
+  'fetching-uv': '下载 uv…',
+  'installing-python': '安装 Python…',
+  'creating-venv': '创建虚拟环境…',
+  'syncing-deps': '安装依赖…',
+  ready: '就绪',
+  failed: '失败',
+};
+
 function overallTone(status: RuntimeStatus | null): { dot: string; text: string; label: string } {
   const node = status?.processes.find(process => process.id === 'node-api');
   const worker = status?.processes.find(process => process.id === 'python-worker');
@@ -55,6 +66,8 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
   const [doctorRunning, setDoctorRunning] = useState(false);
   const [doctor, setDoctor] = useState<DoctorReport | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [maintenanceRunning, setMaintenanceRunning] = useState<'repair' | 'rebuild' | null>(null);
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,6 +113,27 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
       setToast('Worker 重启指令已下发');
     } catch (e) {
       setToast(`重启失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [bridge]);
+
+  // 托管运行时维护（P1 #31）：修复=重跑 venv+依赖 sync；重建=清目录全流程（含重新下载）
+  const runMaintenance = useCallback(async (action: 'repair' | 'rebuild') => {
+    setMaintenanceRunning(action);
+    setConfirmRebuild(false);
+    setToast(action === 'repair' ? '正在修复托管运行时（依赖 sync，可能需要数分钟）…' : '正在重建托管运行时（含重新下载，可能需要数分钟）…');
+    try {
+      const next = action === 'repair' ? await bridge.repairManagedRuntime() : await bridge.rebuildManagedRuntime();
+      setStatus(next);
+      setToast(action === 'repair' ? '托管运行时修复完成' : '托管运行时重建完成');
+    } catch (e) {
+      setToast(`维护失败：${e instanceof Error ? e.message : String(e)}（可查看日志目录）`);
+      try {
+        setStatus(await bridge.getRuntimeStatus());
+      } catch {
+        /* 状态不可达时保持上次 */
+      }
+    } finally {
+      setMaintenanceRunning(null);
     }
   }, [bridge]);
 
@@ -222,6 +256,61 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
                     <span className="text-neutral-300 font-mono break-all">{status?.environment.models[model.key] || 'Worker 内置默认'}</span>
                   </div>
                 ))}
+                {status?.environment.managedRuntime && (
+                  <div className="pt-2 mt-1 border-t border-neutral-800/70 space-y-1.5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-neutral-500 w-20 shrink-0">托管运行时</span>
+                      <span className={`flex-1 font-mono break-all ${stateColor(status.environment.managedRuntime.phase)}`}>
+                        {MANAGED_PHASE_LABEL[status.environment.managedRuntime.phase] ?? status.environment.managedRuntime.phase}
+                        {status.environment.managedRuntime.phase === 'ready' ? ` · Python ${status.environment.managedRuntime.pythonVersion} · uv ${status.environment.managedRuntime.uvVersion}` : ''}
+                      </span>
+                    </div>
+                    {status.environment.managedRuntime.venvDir && (
+                      <div className="flex gap-3">
+                        <span className="text-neutral-500 w-20 shrink-0">venv 目录</span>
+                        <span className="text-neutral-400 font-mono break-all">{status.environment.managedRuntime.venvDir}</span>
+                      </div>
+                    )}
+                    {status.environment.managedRuntime.error && (
+                      <div className="text-red-400/90 break-all">{status.environment.managedRuntime.error}</div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={maintenanceRunning !== null}
+                        onClick={() => void runMaintenance('repair')}
+                        className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200 disabled:opacity-50"
+                      >
+                        {maintenanceRunning === 'repair' ? '修复中…' : '修复环境（依赖 sync）'}
+                      </button>
+                      {confirmRebuild ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={maintenanceRunning !== null}
+                            onClick={() => void runMaintenance('rebuild')}
+                            className="px-2.5 py-1 rounded-md bg-red-500/15 border border-red-500/30 text-red-300 text-xs hover:bg-red-500/25 disabled:opacity-50"
+                          >
+                            确认重建（清空重下）
+                          </button>
+                          <button type="button" onClick={() => setConfirmRebuild(false)} className="text-xs text-neutral-500 hover:text-neutral-300">
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={maintenanceRunning !== null}
+                          onClick={() => setConfirmRebuild(true)}
+                          className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-400 disabled:opacity-50"
+                          title="清空 runtime 目录并完整重装（uv / Python / 依赖全部重新下载）"
+                        >
+                          一键重建
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 

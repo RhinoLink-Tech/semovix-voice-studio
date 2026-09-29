@@ -27,6 +27,22 @@ pip install -r requirements-macos.txt    # macOS（Apple Silicon，MPS）
 pip install -r requirements-cuda.txt     # Linux/Windows（NVIDIA GPU）
 ```
 
+### 锁文件（桌面版托管运行时，P1 #31）
+
+桌面版「自动安装托管运行时」用 `uv pip sync` 按**锁定版本**安装依赖
+（Python 3.12，uv 二进制版本与 SHA256 在 `electron/main/lib/managedRuntime.ts` 锁定）：
+
+- `requirements-lock-macos.txt` — macOS（Apple Silicon）
+- `requirements-lock-cuda.txt` — Linux/Windows（CUDA，含 `--extra-index-url` 指向 PyTorch cu121 索引）
+
+升级依赖时由维护者重新生成（无仓库脚本，命令记录在文件头注释中）：
+
+```bash
+uv pip compile requirements-macos.txt -o requirements-lock-macos.txt
+uv pip compile requirements-cuda.txt -o requirements-lock-cuda.txt \
+  --python-platform x86_64-unknown-linux-gnu --python-version 3.12
+```
+
 ## 启动
 
 双击 `启动Worker.command`（自动按优先级解析解释器：`SEMOVIX_PYTHON_BIN` >

@@ -10,6 +10,7 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { SETUP_SCHEMA_VERSION } from '../shared/types';
 import type { DesktopSetup, FileDialogOptions, ReadFileOptions, SaveFilePayload } from '../shared/types';
 import type { DesktopContext } from './context';
 
@@ -49,11 +50,19 @@ export function registerIpcHandlers(context: DesktopContext, getWindow: () => Br
   ipcMain.handle('desktop:run-doctor', () => context.runDoctorNow());
 
   ipcMain.handle('desktop:restart-worker', async () => {
-    const supervisor = context.pythonWorkerSupervisor;
-    if (!context.getSetup().python) {
-      throw new Error('未配置 Python 环境：请先在首次启动向导或运行时状态中心完成配置');
-    }
-    await supervisor.restart();
+    // 经 context：managed 模式重启前 ensure 托管运行时（P1 #31）
+    await context.restartWorkerProcess();
+  });
+
+  // 托管运行时维护（P1 #31）：执行后返回最新状态供 UI 即刷
+  ipcMain.handle('desktop:repair-managed-runtime', async () => {
+    await context.repairManagedPython();
+    return context.collectStatus();
+  });
+
+  ipcMain.handle('desktop:rebuild-managed-runtime', async () => {
+    await context.rebuildManagedPython();
+    return context.collectStatus();
   });
 
   ipcMain.handle('desktop:choose-directory', async (_event, options?: FileDialogOptions) => {
@@ -135,8 +144,10 @@ export function registerIpcHandlers(context: DesktopContext, getWindow: () => Br
   ipcMain.handle('desktop:get-setup', () => context.getSetup());
 
   ipcMain.handle('desktop:save-setup', async (_event, setup: DesktopSetup) => {
-    if (!setup || typeof setup !== 'object' || setup.schemaVersion !== 1) {
-      throw new Error('非法的桌面配置：schemaVersion 必须为 1');
+    // 与 desktopConfig.SETUP_SCHEMA_VERSION 同源（P1 #31 起 = 2）；v1 文件经
+    // normalizeSetup 迁移，此处只拦形状完全不对的输入
+    if (!setup || typeof setup !== 'object' || setup.schemaVersion !== SETUP_SCHEMA_VERSION) {
+      throw new Error(`非法的桌面配置：schemaVersion 必须为 ${SETUP_SCHEMA_VERSION}`);
     }
     return context.applySetup(setup);
   });

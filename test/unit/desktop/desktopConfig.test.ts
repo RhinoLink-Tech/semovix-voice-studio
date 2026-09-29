@@ -5,6 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SETUP_SCHEMA_VERSION } from '../../../electron/shared/types';
 import { defaultSetup, loadSetup, normalizeSetup, saveSetup, validateSetupForSave } from '../../../electron/main/lib/desktopConfig';
 
 const tempDirs: string[] = [];
@@ -38,6 +39,16 @@ describe('normalizeSetup', () => {
     expect(setup.models.base).toBe(''); // 非字符串拒绝
     expect(setup.models.asr).toBe('openai/whisper-large-v3-turbo');
   });
+
+  it('v1 配置 normalize 后自动升到当前 schemaVersion（P1 #31 迁移）', () => {
+    const setup = normalizeSetup({
+      schemaVersion: 1,
+      python: { kind: 'conda', env: 'my-env' },
+      models: { customVoice: '/models/cv', voiceDesign: '', base: '', asr: '' },
+    });
+    expect(setup.schemaVersion).toBe(SETUP_SCHEMA_VERSION);
+    expect(setup.python).toEqual({ kind: 'conda', env: 'my-env' }); // 数据不丢，只有版本号迁移
+  });
 });
 
 describe('saveSetup / loadSetup', () => {
@@ -59,6 +70,27 @@ describe('saveSetup / loadSetup', () => {
     const file = makeConfigFile();
     fs.writeFileSync(file, '{ broken json', 'utf8');
     expect(loadSetup(file)).toEqual(defaultSetup());
+  });
+
+  it('v1 文件加载即迁移；managed 配置完整 round-trip（P1 #31）', () => {
+    // 磁盘上的旧 v1 文件：loadSetup 走 normalize → 版本升到当前值，其余字段原样保留
+    const file = makeConfigFile();
+    fs.writeFileSync(file, JSON.stringify({
+      schemaVersion: 1,
+      libraryDir: null,
+      python: { kind: 'conda', env: 'qwen3-tts' },
+      models: { customVoice: '', voiceDesign: '', base: '', asr: '' },
+      firstRunCompletedAt: '2026-01-01T00:00:00.000Z',
+    }), 'utf8');
+    const migrated = loadSetup(file);
+    expect(migrated.schemaVersion).toBe(SETUP_SCHEMA_VERSION);
+    expect(migrated.firstRunCompletedAt).toBe('2026-01-01T00:00:00.000Z');
+
+    // managed：无路径可校验，validate 直接放行，save/load 不增删字段
+    const managed = { ...defaultSetup(), python: { kind: 'managed' as const } };
+    expect(validateSetupForSave(managed).ok).toBe(true);
+    saveSetup(file, managed);
+    expect(loadSetup(file)).toEqual(managed);
   });
 });
 

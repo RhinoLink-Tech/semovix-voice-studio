@@ -5,6 +5,14 @@
  * 或任何 Node 专有模块——renderer（vite）会直接打包它。
  */
 
+/**
+ * 桌面配置 schema 版本（P1 #31 起 = 2：PythonSetup 新增 kind='managed'）。
+ * 常量放在共享层而不是 desktopConfig，让 renderer（向导默认值）与
+ * main（校验/归一化）引用同一真相，避免字面量漂移。
+ * 加法兼容升级：normalizeSetup 总是重写为当前版本，旧文件下次保存自动迁移。
+ */
+export const SETUP_SCHEMA_VERSION = 2;
+
 /** 进程监管状态机（P0-A #2/#3）：checking → starting → ready；异常 → failed；退出 → stopping/stopped */
 export type SupervisorState =
   | 'checking'
@@ -43,9 +51,13 @@ export interface DoctorReport {
   error?: string;
 }
 
-/** Python 解释器配置：二进制路径或 conda 环境（与 启动Worker.command 的解析优先级一致） */
+/**
+ * Python 解释器配置（与 启动Worker.command 的解析优先级一致）：
+ * managed = 应用自管的 uv 运行时（P1 #31，无需用户自备环境）；
+ * bin = 指定解释器路径；conda = conda 环境名。
+ */
 export interface PythonSetup {
-  kind: 'bin' | 'conda';
+  kind: 'managed' | 'bin' | 'conda';
   /** kind=bin 时的解释器绝对路径 */
   path?: string;
   /** kind=conda 时的环境名（默认 qwen3-tts） */
@@ -62,7 +74,7 @@ export interface ModelSetup {
 
 /** 首次启动向导（P0-A #9）持久化的桌面配置，落盘 userData/config/desktop.json */
 export interface DesktopSetup {
-  schemaVersion: 1;
+  schemaVersion: typeof SETUP_SCHEMA_VERSION;
   libraryDir: string | null;
   python: PythonSetup | null;
   models: ModelSetup;
@@ -87,6 +99,25 @@ export interface EngineSnapshot {
   error: string | null;
 }
 
+/** 托管运行时阶段（P1 #31）：ensure 流程逐步推进，失败停在出错阶段 */
+export type ManagedRuntimePhase =
+  | 'absent'
+  | 'fetching-uv'
+  | 'installing-python'
+  | 'creating-venv'
+  | 'syncing-deps'
+  | 'ready'
+  | 'failed';
+
+/** 运行时状态中的托管运行时块（来自 userData/runtime/state.json，仅 kind='managed' 时上报） */
+export interface ManagedRuntimeSnapshot {
+  phase: ManagedRuntimePhase;
+  pythonVersion: string;
+  uvVersion: string;
+  venvDir: string;
+  error: string | null;
+}
+
 export interface EnvironmentSnapshot {
   python: string | null;
   torch: string | null;
@@ -94,6 +125,8 @@ export interface EnvironmentSnapshot {
   ffmpeg: string | null;
   models: ModelSetup;
   libraryDir: string;
+  /** null / 缺失 = 未使用托管运行时（bin/conda 模式） */
+  managedRuntime?: ManagedRuntimeSnapshot | null;
 }
 
 /** 单条统一日志（P0-A #11）：JSONL 落盘字段与内存缓冲共用 */
@@ -157,6 +190,13 @@ export interface SemovoixDesktopBridge {
   getRuntimeStatus(): Promise<RuntimeStatus>;
   runDoctor(): Promise<DoctorReport>;
   restartWorker(): Promise<void>;
+  /**
+   * 托管运行时维护（P1 #31，仅 kind='managed' 时有意义）：
+   * 修复 = 重跑 venv + 依赖 sync（不重新下载 uv/Python）；重建 = 清空 runtime 目录全流程。
+   * 返回最新 RuntimeStatus 供 UI 即时刷新。
+   */
+  repairManagedRuntime(): Promise<RuntimeStatus>;
+  rebuildManagedRuntime(): Promise<RuntimeStatus>;
   chooseDirectory(options?: FileDialogOptions): Promise<string | null>;
   chooseFile(options?: FileDialogOptions): Promise<string | null>;
   /**

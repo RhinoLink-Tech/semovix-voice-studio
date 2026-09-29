@@ -11,6 +11,7 @@ import type {
   EngineSnapshot,
   EnvironmentSnapshot,
   LogEntry,
+  ManagedRuntimeSnapshot,
   ModelSetup,
   ProcessStatus,
   RuntimeStatus,
@@ -26,6 +27,8 @@ export interface RuntimeStatusInput {
   libraryDir: string;
   lastDoctor: DoctorReport | null;
   fetchImpl?: typeof fetch;
+  /** 托管运行时快照（P1 #31）：仅 kind='managed' 时由 context 传入，否则缺省 */
+  managedRuntime?: ManagedRuntimeSnapshot | null;
 }
 
 interface WorkerEngineSnapshot {
@@ -128,6 +131,7 @@ export async function collectRuntimeStatus(input: RuntimeStatusInput): Promise<R
     ffmpeg: ffmpegCheck ? `${ffmpegCheck.state === 'pass' ? '可用' : '不可用'} · ${ffmpegCheck.message}` : null,
     models: { ...input.setupModels, ...liveCheckpoints },
     libraryDir: input.libraryDir,
+    managedRuntime: input.managedRuntime ?? null,
   };
 
   const recentErrors: LogEntry[] = logger.getRecentErrors();

@@ -196,7 +196,16 @@ describe('NodeServerSupervisor', () => {
 });
 
 describe('PythonWorkerSupervisor', () => {
-  function makeWorkerSupervisor(python: import('../../../electron/shared/types').PythonSetup | null, fetchImpl?: typeof fetch) {
+  function makeWorkerSupervisor(
+    python: import('../../../electron/shared/types').PythonSetup | null,
+    fetchImpl?: typeof fetch,
+    extra?: {
+      managedPythonPath?: string;
+      modelCacheDir?: string;
+      /** 记录 spawn 命令行（断言解释器解析与环境注入用） */
+      commands?: Array<{ command: string; args: string[]; env?: Record<string, string | undefined> }>;
+    },
+  ) {
     const logger = makeLogger();
     const spawned: FakeChild[] = [];
     const supervisor = new PythonWorkerSupervisor({
@@ -206,7 +215,10 @@ describe('PythonWorkerSupervisor', () => {
       workerRoot: '/project/worker',
       port: 8901,
       models: { customVoice: '/models/cv', voiceDesign: '', base: '', asr: '' },
-      spawnImpl: (() => {
+      managedPythonPath: extra?.managedPythonPath,
+      modelCacheDir: extra?.modelCacheDir,
+      spawnImpl: ((command: string, args: string[], options?: { env?: Record<string, string | undefined> }) => {
+        extra?.commands?.push({ command, args, env: options?.env });
         const child = fakeChild(2000 + spawned.length);
         spawned.push(child);
         return child.child;
@@ -242,5 +254,47 @@ describe('PythonWorkerSupervisor', () => {
     expect(supervisor.detail).toContain('异常退出');
     await new Promise(resolve => setTimeout(resolve, 30));
     expect(spawned.length).toBe(1); // 没有自动重启
+  });
+
+  it('managed（P1 #31）：注入的 venv 解释器直接执行 -m uvicorn，优先于一切回退', async () => {
+    const commands: Array<{ command: string; args: string[]; env?: Record<string, string | undefined> }> = [];
+    const { supervisor } = makeWorkerSupervisor({ kind: 'managed' }, undefined, {
+      managedPythonPath: '/userData/runtime/venv/bin/python',
+      commands,
+    });
+    await supervisor.start();
+    expect(supervisor.state).toBe('ready');
+    expect(supervisor.isConfigured()).toBe(true);
+    expect(commands[0].command).toBe('/userData/runtime/venv/bin/python');
+    expect(commands[0].args).toEqual(['-m', 'uvicorn', 'app:app', '--host', '127.0.0.1', '--port', '8901']);
+    expect(commands[0].env?.SEMOVIX_WORKER_PORT).toBe('8901');
+  });
+
+  it('managed 但解释器未注入（防御分支）：退回 PATH python3 而非静默不启动', async () => {
+    const commands: Array<{ command: string; args: string[] }> = [];
+    const { supervisor } = makeWorkerSupervisor({ kind: 'managed' }, undefined, { commands });
+    await supervisor.start();
+    expect(supervisor.state).toBe('ready'); // 假 fetch 下健康检查通过；真实环境会如实 failed 可诊断
+    expect(commands[0].command).toBe('python3');
+  });
+
+  it('托管缓存（P1 #32）：HF_HOME 注入 + registry revision 钉定，用户覆盖的模型不钉', async () => {
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'semovix-cache-'));
+    tempDirs.push(cacheDir);
+    fs.writeFileSync(path.join(cacheDir, 'semovix-models.json'), JSON.stringify({
+      asr: { revision: 'abc123def', desiredRevision: null },
+      customVoice: { revision: 'should-not-apply' },
+    }), 'utf8');
+    const commands: Array<{ command: string; args: string[]; env?: Record<string, string | undefined> }> = [];
+    const { supervisor } = makeWorkerSupervisor({ kind: 'bin', path: '/p/bin/python' }, undefined, {
+      modelCacheDir: cacheDir,
+      commands,
+    });
+    await supervisor.start();
+    expect(supervisor.state).toBe('ready');
+    expect(commands[0].env?.HF_HOME).toBe(cacheDir);
+    expect(commands[0].env?.SEMOVIX_ASR_REVISION).toBe('abc123def'); // 未覆盖 → 按已安装 revision 钉定
+    expect(commands[0].env?.SEMOVIX_TTS_CKPT).toBe('/models/cv'); // 用户本地权重覆盖保留
+    expect(commands[0].env?.SEMOVIX_TTS_REVISION).toBeUndefined(); // 已覆盖的模型不注入 revision
   });
 });

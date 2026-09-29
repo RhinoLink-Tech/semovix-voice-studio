@@ -12,6 +12,15 @@ import { buildAppPaths, type AppPaths } from './lib/appPaths';
 import { loadSetup, saveSetup, validateSetupForSave } from './lib/desktopConfig';
 import { runDoctor } from './lib/doctorRunner';
 import { UnifiedLogger } from './lib/logger';
+import {
+  ensureManagedRuntime,
+  managedRuntimePaths,
+  managedRuntimeSnapshot,
+  rebuildManagedRuntime,
+  repairManagedRuntime,
+  type ManagedRuntimeOptions,
+  type ManagedRuntimeState,
+} from './lib/managedRuntime';
 import { collectRuntimeStatus } from './lib/runtimeStatus';
 import { NodeServerSupervisor, PythonWorkerSupervisor } from './lib/supervisors';
 
@@ -99,6 +108,28 @@ export class DesktopContext {
     return path.join(this.paths.cacheDir, 'huggingface');
   }
 
+  /** 托管运行时参数（P1 #31）：阶段状态落盘在 userData/runtime，锁文件在 worker/ */
+  private managedRuntimeOptions(): ManagedRuntimeOptions {
+    return {
+      userDataDir: this.paths.root,
+      workerRoot: this.options.workerRoot,
+    };
+  }
+
+  /**
+   * 托管运行时就绪保障：ready 则把 venv 解释器注入 supervisor。
+   * 失败抛错（向导/状态中心展示 state.error），调用方跳过 Worker 启动。
+   */
+  private async ensureManagedRuntimeIfConfigured(): Promise<void> {
+    if (this.setup.python?.kind !== 'managed') return;
+    const state = await ensureManagedRuntime(this.managedRuntimeOptions());
+    if (state.phase !== 'ready') {
+      throw new Error(`托管 Python 运行时未就绪（${state.phase}）：${state.error ?? '未知原因'}`);
+    }
+    this.pythonWorkerSupervisor.updateOptions({ managedPythonPath: managedRuntimePaths(this.paths.root).venvPython });
+    this.logger.write('main', 'info', 'managed-runtime', `ready：uv=${state.uvVersion} python=${state.pythonVersion} venv=${state.venvDir}`);
+  }
+
   getSetup(): DesktopSetup {
     return this.setup;
   }
@@ -139,6 +170,11 @@ export class DesktopContext {
     // 需要生效的重启放在保存之后；未配置 Python 时 Worker 保持 stopped
     const restarts: Array<Promise<void>> = [];
     if (libraryChanged && this.nodeSupervisor.state !== 'stopped') restarts.push(this.nodeSupervisor.restart());
+    // 托管运行时（P1 #31）：配置为 managed 或 Worker 未就绪时先 ensure（ready 短路零 spawn），
+    // 失败在此抛出——saveSetup 的调用方（向导）展示错误且不启动 Worker
+    if (this.setup.python?.kind === 'managed' && (workerOptionsChanged || this.pythonWorkerSupervisor.state !== 'ready')) {
+      await this.ensureManagedRuntimeIfConfigured();
+    }
     if (workerOptionsChanged && (this.pythonWorkerSupervisor.isRunning() || this.setup.python)) {
       restarts.push(this.setup.python ? this.pythonWorkerSupervisor.start() : this.pythonWorkerSupervisor.stop());
     }
@@ -155,10 +191,17 @@ export class DesktopContext {
     if (this.setup.models.base) modelEnv.SEMOVIX_VOICE_CLONE_CKPT = this.setup.models.base;
     if (this.setup.models.asr) modelEnv.SEMOVIX_ASR_MODEL = this.setup.models.asr;
 
+    // 托管运行时（P1 #31）：ready 用 venv 解释器；未就绪传期望路径，doctor 以
+    // 启动失败（路径不存在）如实上报，而不是退回 conda 分支产出误导性结论
+    const managedPythonPath = this.setup.python?.kind === 'managed'
+      ? managedRuntimePaths(this.paths.root).venvPython
+      : undefined;
+
     const report = await runDoctor({
       python: this.setup.python,
       doctorScript: this.doctorScript,
       env: modelEnv,
+      managedPythonPath,
     });
     this.lastDoctor = report;
     void this.pushStatus();
@@ -169,6 +212,63 @@ export class DesktopContext {
     return this.lastDoctor;
   }
 
+  /** 重启 Worker（IPC restart-worker）：managed 模式先 ensure（ready 短路），失败如实抛出 */
+  async restartWorkerProcess(): Promise<void> {
+    if (!this.setup.python) {
+      throw new Error('未配置 Python 环境：请先在首次启动向导或运行时状态中心完成配置');
+    }
+    if (this.setup.python.kind === 'managed') {
+      await this.ensureManagedRuntimeIfConfigured();
+    }
+    await this.pythonWorkerSupervisor.restart();
+    void this.pushStatus();
+  }
+
+  /**
+   * 托管运行时修复 / 重建（P1 #31）。
+   * Worker 正在运行时先停：sync 会替换依赖、重建会清空 venv，
+   * 完成后（ready）自动按原状态拉起。
+   */
+  async repairManagedPython(): Promise<ManagedRuntimeState> {
+    return this.runManagedMaintenance('repair', repairManagedRuntime);
+  }
+
+  async rebuildManagedPython(): Promise<ManagedRuntimeState> {
+    return this.runManagedMaintenance('rebuild', rebuildManagedRuntime);
+  }
+
+  private async runManagedMaintenance(
+    action: 'repair' | 'rebuild',
+    run: (options: ManagedRuntimeOptions) => Promise<ManagedRuntimeState>,
+  ): Promise<ManagedRuntimeState> {
+    if (this.setup.python?.kind !== 'managed') {
+      throw new Error('当前未使用托管运行时（Python 配置为 bin/conda），无此操作');
+    }
+    const wasRunning = this.pythonWorkerSupervisor.isRunning();
+    if (wasRunning) {
+      this.logger.write('main', 'info', 'managed-runtime', `${action}：先停止 Worker`);
+      await this.pythonWorkerSupervisor.stop();
+    }
+    let state: ManagedRuntimeState;
+    try {
+      state = await run(this.managedRuntimeOptions());
+    } catch (error) {
+      // runPhases 失败时已把 failed + error 落盘（状态中心据此展示）；此处如实抛给 IPC 调用方
+      this.logger.write('main', 'error', 'managed-runtime', `${action} 失败：${error instanceof Error ? error.message : String(error)}`);
+      void this.pushStatus();
+      throw error;
+    }
+    if (state.phase === 'ready') {
+      this.pythonWorkerSupervisor.updateOptions({ managedPythonPath: managedRuntimePaths(this.paths.root).venvPython });
+      if (wasRunning) {
+        this.logger.write('main', 'info', 'managed-runtime', `${action} 完成：重启 Worker`);
+        await this.pythonWorkerSupervisor.start();
+      }
+    }
+    void this.pushStatus();
+    return state;
+  }
+
   async collectStatus(): Promise<RuntimeStatus> {
     return collectRuntimeStatus({
       nodeSupervisor: this.nodeSupervisor,
@@ -177,6 +277,7 @@ export class DesktopContext {
       setupModels: this.setup.models,
       libraryDir: this.libraryDir(),
       lastDoctor: this.lastDoctor,
+      managedRuntime: this.setup.python?.kind === 'managed' ? managedRuntimeSnapshot(this.paths.root) : null,
     });
   }
 

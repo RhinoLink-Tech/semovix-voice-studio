@@ -20,7 +20,14 @@ export function buildDoctorCommand(
   python: PythonSetup | null,
   doctorScript: string,
   env: NodeJS.ProcessEnv = process.env,
+  /** 托管运行时 venv 解释器（P1 #31，kind='managed' 时由 context 传入；缺省退回期望路径） */
+  managedPythonPath?: string,
 ): { command: string; args: string[] } {
+  if (python?.kind === 'managed') {
+    // 托管 venv 的 python：路径缺失时仍指向期望位置——spawn ENOENT 的报错信息
+    // 自带完整路径，比静默落到 conda 分支诚实
+    return { command: managedPythonPath ?? 'python3', args: [doctorScript, '--json'] };
+  }
   if (python?.kind === 'bin' && python.path) {
     return { command: python.path, args: [doctorScript, '--json'] };
   }
@@ -108,12 +115,14 @@ export interface RunDoctorOptions {
   doctorScript: string;
   /** 透传给 doctor 的环境变量（模型路径等） */
   env?: Record<string, string>;
+  /** 托管运行时 venv 解释器（P1 #31，kind='managed' 时使用） */
+  managedPythonPath?: string;
   timeoutMs?: number;
 }
 
 export async function runDoctor(options: RunDoctorOptions): Promise<DoctorReport> {
   const ranAt = new Date().toISOString();
-  const { command, args } = buildDoctorCommand(options.python, options.doctorScript);
+  const { command, args } = buildDoctorCommand(options.python, options.doctorScript, process.env, options.managedPythonPath);
   const timeoutMs = options.timeoutMs ?? DOCTOR_TIMEOUT_MS;
 
   return new Promise<DoctorReport>(resolve => {

@@ -13,8 +13,8 @@ import { writeJsonAtomicSync } from '../lib/atomicFiles';
 
 /** voice-profiles 冻结 manifest 的 schemaVersion（voiceLifecycle/voiceSourceLifecycle 写入值） */
 export const PROFILE_SCHEMA_VERSION = 2;
-/** Electron 桌面配置 SETUP_SCHEMA_VERSION（electron/main，加法兼容） */
-export const SETTINGS_SCHEMA_VERSION = 1;
+/** Electron 桌面配置 SETUP_SCHEMA_VERSION（electron/main，加法兼容；#31 起 = 2：python kind='managed'） */
+export const SETTINGS_SCHEMA_VERSION = 2;
 /** Worker /health 自 #30 起上报的协议版本；Node 侧新特性语义以此为门槛（#32 起为 3：/models 下载端点） */
 export const WORKER_PROTOCOL_VERSION = 3;
 /** Node 侧实际依赖的最低 Worker 协议版本（低于此仅日志提示，不伪装兼容） */
