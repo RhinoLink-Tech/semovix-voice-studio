@@ -15,6 +15,7 @@ import { SETUP_SCHEMA_VERSION } from '../shared/types';
 import type { DesktopSetup, FileDialogOptions, ReadFileOptions, SaveFilePayload } from '../shared/types';
 import type { DesktopContext } from './context';
 import { buildDiagnosticsBundle } from './lib/diagnosticsBundle';
+import { checkForUpdates } from './lib/updateCheck';
 
 const MAX_SAVE_BYTES = 512 * 1024 * 1024; // Profile ZIP / 长 WAV 也远小于此
 const MAX_READ_BYTES = 512 * 1024 * 1024; // 与 saveFile 对称
@@ -178,6 +179,21 @@ export function registerIpcHandlers(context: DesktopContext, getWindow: () => Br
   });
 
   ipcMain.handle('desktop:get-setup', () => context.getSetup());
+
+  // 手动检查更新（P1 #40）：按 setup.updateChannel 拉自研 latest.json 比对版本；
+  // 失败/已是最新/有新版三态如实返回，不自动下载安装
+  ipcMain.handle('desktop:check-updates', async () => {
+    const setup = context.getSetup();
+    return checkForUpdates({ channel: setup.updateChannel ?? 'stable', currentVersion: context.appVersion });
+  });
+
+  // 系统浏览器打开下载页（检查更新后的下一步）；仅 https 白名单，防 file:// 等协议
+  ipcMain.handle('desktop:open-external', async (_event, url: unknown) => {
+    if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+      throw new Error('只允许打开 https:// 地址');
+    }
+    await shell.openExternal(url);
+  });
 
   ipcMain.handle('desktop:save-setup', async (_event, setup: DesktopSetup) => {
     // 与 desktopConfig.SETUP_SCHEMA_VERSION 同源（P1 #31 起 = 2）；v1 文件经

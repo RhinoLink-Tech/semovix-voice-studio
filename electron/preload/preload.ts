@@ -23,6 +23,8 @@ const CHANNELS = {
   revealInFolder: 'desktop:reveal-in-folder',
   openLogs: 'desktop:open-logs',
   exportDiagnostics: 'desktop:export-diagnostics',
+  checkUpdates: 'desktop:check-updates',
+  openExternal: 'desktop:open-external',
   getSetup: 'desktop:get-setup',
   saveSetup: 'desktop:save-setup',
 } as const;
@@ -43,6 +45,8 @@ const bridge: SemovoixDesktopBridge = {
   revealInFolder: target => ipcRenderer.invoke(CHANNELS.revealInFolder, target),
   openLogs: () => ipcRenderer.invoke(CHANNELS.openLogs),
   exportDiagnostics: () => ipcRenderer.invoke(CHANNELS.exportDiagnostics),
+  checkUpdates: () => ipcRenderer.invoke(CHANNELS.checkUpdates),
+  openExternal: url => ipcRenderer.invoke(CHANNELS.openExternal, url),
   getSetup: () => ipcRenderer.invoke(CHANNELS.getSetup),
   saveSetup: setup => ipcRenderer.invoke(CHANNELS.saveSetup, setup),
   onRuntimeStatusChanged(listener) {

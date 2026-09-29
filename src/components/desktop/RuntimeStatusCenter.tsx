@@ -6,11 +6,13 @@
  *   引擎状态（CustomVoice / VoiceDesign / Base / Whisper + 云端引擎）
  *   环境状态（Python / Torch / 设备 / FFmpeg / 模型路径 / 素材目录）
  *
- * 动作：重新体检（Doctor）、重启 Worker、打开日志目录、复制最近错误。
+ * 动作：重新体检（Doctor）、重启 Worker、打开日志目录、复制最近错误、
+ * 手动检查更新（P1 #40：Stable/Preview 通道 + 打开下载页，不自动安装）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../desktop/desktopBridge';
-import type { DoctorReport, RuntimeStatus } from '../../../electron/shared/types';
+import type { DoctorReport, RuntimeStatus, UpdateChannel, UpdateCheckResult } from '../../../electron/shared/types';
+import { SETUP_SCHEMA_VERSION } from '../../../electron/shared/types';
 
 const PROCESS_LABELS: Record<string, string> = {
   'node-api': 'Node API',
@@ -69,6 +71,10 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
   const [maintenanceRunning, setMaintenanceRunning] = useState<'repair' | 'rebuild' | null>(null);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
   const [exportingDiagnostics, setExportingDiagnostics] = useState(false);
+  // P1 #40 手动检查更新：通道来自 setup（缺省 stable）；结果三态如实展示
+  const [updateChannel, setUpdateChannel] = useState<UpdateChannel>('stable');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,6 +87,15 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
       alive = false;
       unsubscribe();
     };
+  }, [bridge]);
+
+  // 更新通道以桌面配置为准（P1 #40）；读失败保持 stable 缺省，不阻塞面板
+  useEffect(() => {
+    let alive = true;
+    void bridge.getSetup().then(setup => {
+      if (alive && setup?.updateChannel) setUpdateChannel(setup.updateChannel);
+    }).catch(() => undefined);
+    return () => { alive = false; };
   }, [bridge]);
 
   // Doctor 结果随状态推送更新（runDoctor 后 main 会立即推送）
@@ -151,6 +166,58 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
       setExportingDiagnostics(false);
     }
   }, [bridge]);
+
+  // 手动检查更新（P1 #40）：三态如实 toast；有新版时保留结果供「打开下载页」
+  const checkUpdates = useCallback(async () => {
+    setCheckingUpdates(true);
+    setToast('正在检查更新…');
+    try {
+      const result = await bridge.checkUpdates();
+      setUpdateResult(result);
+      if (result.status === 'update_available') {
+        setToast(`发现新版本 v${result.latest.version}（当前 v${result.currentVersion}），请下载后手动安装。`);
+      } else if (result.status === 'up_to_date') {
+        setToast(`已是最新版本（v${result.currentVersion}）。`);
+      } else {
+        setToast(`检查更新失败：${result.error}`);
+      }
+    } catch (e) {
+      setToast(`检查更新失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }, [bridge]);
+
+  // 切换更新通道：整个 setup 落盘（applySetup 只在 Python/模型/素材目录变化时才动子进程，通道切换无副作用）
+  const switchUpdateChannel = useCallback(async (next: UpdateChannel) => {
+    if (next === updateChannel) return;
+    try {
+      const setup = await bridge.getSetup();
+      await bridge.saveSetup({
+        schemaVersion: SETUP_SCHEMA_VERSION,
+        libraryDir: setup?.libraryDir ?? null,
+        python: setup?.python ?? null,
+        models: setup?.models ?? { customVoice: '', voiceDesign: '', base: '', asr: '' },
+        firstRunCompletedAt: setup?.firstRunCompletedAt ?? null,
+        updateChannel: next,
+      });
+      setUpdateChannel(next);
+      setUpdateResult(null);
+      setToast(`更新通道已切换为${next === 'stable' ? '正式版（Stable）' : '抢先体验（Preview）'}，可手动检查更新。`);
+    } catch (e) {
+      setToast(`切换通道失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [bridge, updateChannel]);
+
+  const openDownloadPage = useCallback(async () => {
+    const url = updateResult?.status === 'update_available' ? updateResult.latest.url : null;
+    if (!url) return;
+    try {
+      await bridge.openExternal(url);
+    } catch (e) {
+      setToast(`打开下载页失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [bridge, updateResult]);
 
   const copyRecentErrors = useCallback(async () => {
     const errors = status?.recentErrors ?? [];
@@ -329,6 +396,62 @@ export function RuntimeStatusCenter({ bridge }: { bridge: DesktopBridge }) {
                     </div>
                   </div>
                 )}
+              </div>
+            </section>
+
+            {/* 应用更新（P1 #40：手动检查，通道可选；不自动下载安装） */}
+            <section>
+              <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">应用更新</h4>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/50 px-3 py-2.5 space-y-2 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="text-neutral-500 w-20 shrink-0">更新通道</span>
+                  <div className="flex gap-1">
+                    {(['stable', 'preview'] as const).map(channel => (
+                      <button
+                        key={channel}
+                        type="button"
+                        onClick={() => void switchUpdateChannel(channel)}
+                        className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }`}
+                      >
+                        {channel === 'stable' ? '正式版（Stable）' : '抢先体验（Preview）'}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void checkUpdates()}
+                    disabled={checkingUpdates}
+                    className="ml-auto px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200 disabled:opacity-50"
+                    title="拉取当前通道的 latest.json 与本机版本比对；不自动下载安装"
+                  >
+                    {checkingUpdates ? '检查中…' : '检查更新'}
+                  </button>
+                </div>
+                {updateResult?.status === 'update_available' && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-neutral-800/70">
+                    <span className="text-neutral-400">
+                      新版本 <span className="text-neutral-200 font-mono">v{updateResult.latest.version}</span> 已发布
+                      {updateResult.latest.releaseDate ? `（${new Date(updateResult.latest.releaseDate).toLocaleDateString()}）` : ''}
+                      ，当前 <span className="font-mono">v{updateResult.currentVersion}</span>。
+                    </span>
+                    {updateResult.latest.url && (
+                      <button
+                        type="button"
+                        onClick={() => void openDownloadPage()}
+                        className="ml-auto px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200"
+                      >
+                        打开下载页
+                      </button>
+                    )}
+                  </div>
+                )}
+                <p className="text-neutral-600 text-[11px] leading-relaxed">
+                  手动检查更新：应用只比对版本号并给出下载入口，下载与安装始终由你确认执行。
+                </p>
               </div>
             </section>
 

@@ -49,6 +49,20 @@ describe('normalizeSetup', () => {
     expect(setup.schemaVersion).toBe(SETUP_SCHEMA_VERSION);
     expect(setup.python).toEqual({ kind: 'conda', env: 'my-env' }); // 数据不丢，只有版本号迁移
   });
+
+  it('更新通道 round-trip；非法值/缺失回退 stable（P1 #40，schemaVersion 仍为 2）', () => {
+    // 缺失与非法值 → stable
+    expect(normalizeSetup({ python: null }).updateChannel).toBe('stable');
+    expect(normalizeSetup({ python: null, updateChannel: 'nightly' }).updateChannel).toBe('stable');
+    // 合法值透传
+    expect(normalizeSetup({ python: null, updateChannel: 'preview' }).updateChannel).toBe('preview');
+    // 落盘 round-trip 不丢字段、不改 schemaVersion
+    const file = makeConfigFile();
+    const setup = { ...defaultSetup(), updateChannel: 'preview' as const };
+    expect(setup.schemaVersion).toBe(SETUP_SCHEMA_VERSION); // additive 可选字段：不加版本号
+    saveSetup(file, setup);
+    expect(loadSetup(file)).toEqual(setup);
+  });
 });
 
 describe('saveSetup / loadSetup', () => {

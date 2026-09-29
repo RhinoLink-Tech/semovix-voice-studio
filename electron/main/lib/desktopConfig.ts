@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { SETUP_SCHEMA_VERSION } from '../../shared/types';
-import type { DesktopSetup, ModelSetup, PythonSetup } from '../../shared/types';
+import type { DesktopSetup, ModelSetup, PythonSetup, UpdateChannel } from '../../shared/types';
 
 // 版本常量已上移到 shared/types（P1 #31：renderer 向导与 main 校验共用同一真相）；
 // 在此重导出以兼容既有 import 路径。
@@ -24,6 +24,7 @@ export function defaultSetup(): DesktopSetup {
     python: null,
     models: { customVoice: '', voiceDesign: '', base: '', asr: '' },
     firstRunCompletedAt: null,
+    updateChannel: 'stable',
   };
 }
 
@@ -71,6 +72,8 @@ export function normalizeSetup(raw: unknown): DesktopSetup {
     python: normalizePython(source.python),
     models: normalizeModels(source.models),
     firstRunCompletedAt: isNonEmptyString(source.firstRunCompletedAt) ? source.firstRunCompletedAt : null,
+    // 更新通道（P1 #40）：非法值一律回 stable（schemaVersion 仍为 2：additive 可选字段）
+    updateChannel: (source.updateChannel === 'preview' ? 'preview' : 'stable') as UpdateChannel,
   };
 }
 

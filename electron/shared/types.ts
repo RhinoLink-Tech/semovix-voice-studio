@@ -72,6 +72,18 @@ export interface ModelSetup {
   asr: string;
 }
 
+/**
+ * 更新通道（P1 #40）：stable = 正式版；preview = 抢先体验。
+ * 手动检查更新（不引入 electron-updater）：拉取自研 latest.json 比对版本号。
+ */
+export type UpdateChannel = 'stable' | 'preview';
+
+/** 手动检查更新的结果（三态如实上报，绝不伪造"已是最新"） */
+export type UpdateCheckResult =
+  | { status: 'up_to_date'; currentVersion: string }
+  | { status: 'update_available'; currentVersion: string; latest: { version: string; releaseDate: string | null; notes: string | null; url: string | null } }
+  | { status: 'error'; error: string };
+
 /** 首次启动向导（P0-A #9）持久化的桌面配置，落盘 userData/config/desktop.json */
 export interface DesktopSetup {
   schemaVersion: typeof SETUP_SCHEMA_VERSION;
@@ -79,6 +91,8 @@ export interface DesktopSetup {
   python: PythonSetup | null;
   models: ModelSetup;
   firstRunCompletedAt: string | null;
+  /** 更新通道（P1 #40，additive 可选字段，schemaVersion 仍为 2）；缺省 = stable */
+  updateChannel?: UpdateChannel;
 }
 
 export interface ProcessStatus {
@@ -214,6 +228,14 @@ export interface SemovoixDesktopBridge {
    * 内容在主进程构建，Renderer 不经手任何采集细节。
    */
   exportDiagnostics(): Promise<string | null>;
+  /**
+   * 手动检查更新（P1 #40）：按 setup.updateChannel 拉取自研 latest.json
+   * 并与当前版本比较。结果三态如实返回（up_to_date / update_available / error），
+   * 不自动下载、不自动安装。
+   */
+  checkUpdates(): Promise<UpdateCheckResult>;
+  /** 在系统浏览器打开 https 地址（检查更新后的"打开下载页"）；仅 https 白名单 */
+  openExternal(url: string): Promise<void>;
   /** 首次向导专用：读取/保存桌面配置（具体动作，字段受 DesktopSetup 约束） */
   getSetup(): Promise<DesktopSetup | null>;
   saveSetup(setup: DesktopSetup): Promise<DesktopSetup>;

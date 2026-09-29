@@ -11,8 +11,10 @@
  *   缺失 → 显式禁用签名（-c.mac.identity=null / 跳过 win 签名），
  *   并在 release/latest.json 的 signing 段标注 "unsigned"。
  *
- * 更新清单 release/latest.json：version / releaseDate / files[{name,url,sha256,size}] /
- *   signing —— url 为占位（发布地址由分发方确定后替换），校验以 sha256 为准。
+ * 更新清单 latest.json：version / releaseDate / files[{name,url,sha256,size}] /
+ *   signing / channel —— url 为占位（发布地址由分发方确定后替换），校验以 sha256 为准。
+ *   P1 #40：RELEASE_CHANNEL=stable|preview（默认 stable）→ release/<channel>/latest.json，
+ *   根 latest.json 同步保留兼容；桌面端手动检查更新按通道拉取比对。
  */
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -120,8 +122,12 @@ function packageApp() {
   return signing;
 }
 
-/** 4) SHA256SUMS + latest.json 更新清单（--dir 无安装包产物，仅记录结构验证结果） */
+/** 4) SHA256SUMS + latest.json 更新清单（--dir 无安装包产物，仅记录结构验证结果）
+ *    P1 #40 起：RELEASE_CHANNEL（stable|preview，默认 stable）决定清单落在
+ *    release/<channel>/latest.json（应用按通道拉取）；根 latest.json 同步保留兼容。
+ */
 function writeManifests(signing) {
+  const channel = process.env.RELEASE_CHANNEL === 'preview' ? 'preview' : 'stable';
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const installers = fs.readdirSync(releaseDir)
     .filter(name => /\.(dmg|exe|zip|AppImage|snap|deb)$/i.test(name))
@@ -138,6 +144,7 @@ function writeManifests(signing) {
   }
 
   const manifest = {
+    channel,
     version: pkg.version,
     releaseDate: new Date().toISOString(),
     files: installers.map(entry => ({
@@ -150,8 +157,12 @@ function writeManifests(signing) {
     notes: 'P0-B #29 首个可安装构建。签名状态见 signing 段（unsigned = 未签名，安装时系统会提示来源不受信）。',
     verification: '请以 SHA256SUMS.txt 中的 sha256 校验下载产物后再安装。',
   };
-  fs.writeFileSync(path.join(releaseDir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`latest.json：v${pkg.version}（${installers.length} 个产物，signing=${JSON.stringify(signing)}）`);
+  const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
+  const channelDir = path.join(releaseDir, channel);
+  fs.mkdirSync(channelDir, { recursive: true });
+  fs.writeFileSync(path.join(channelDir, 'latest.json'), serialized);
+  fs.writeFileSync(path.join(releaseDir, 'latest.json'), serialized); // 根清单保留兼容（旧读取方）
+  console.log(`latest.json：v${pkg.version}（channel=${channel}，${installers.length} 个产物，signing=${JSON.stringify(signing)}）`);
 }
 
 buildAll();
