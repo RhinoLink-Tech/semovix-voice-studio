@@ -12,6 +12,7 @@ import { createApp } from './server/app';
 import { getConfig } from './server/config';
 import { getDb } from './server/db/libraryStore';
 import { recoverJobsOnBoot, shutdownActiveJobs } from './server/jobs/runner';
+import { cleanupIfDue } from './server/lib/storageCleanup';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,8 @@ async function startServer() {
   });
   // 统一 Job 基座：启动恢复（doc #17）——清理过期幂等键、补登记领域孤儿、按领域事实重分类。
   void recoverJobsOnBoot().catch(error => console.error('无法恢复统一任务:', error));
+  // P1 #39：存储治理启动钩子——距上次清理 >24h 才按保留策略清扫（内部节流，失败不阻塞启动）
+  void cleanupIfDue().catch(error => console.error('存储清理失败:', error));
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');

@@ -12,6 +12,7 @@ import { formatBytes, useModels } from '../../hooks/useModels';
 import { getDesktopBridge } from '../../desktop/desktopBridge';
 import { useAppCapabilities } from '../../desktop/capabilities';
 import { ModelRow } from './ModelRow';
+import { StorageGovernance } from './StorageGovernance';
 
 export const ModelsView: React.FC = () => {
   const { models, cacheRoot, disk, loading, busyKey, message, setMessage, refresh, download, cancel, remove, setRevision, unloadEngine, mode } = useModels();
@@ -75,6 +76,9 @@ export const ModelsView: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* P1 #39：存储治理（保留策略 + 占用统计 + 立即清理） */}
+      <StorageGovernance />
     </div>
   );
 };

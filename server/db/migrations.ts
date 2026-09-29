@@ -19,6 +19,7 @@ import { assetIntegrity as migration0003 } from './migrations/0003_asset_integri
 import { voiceIdentities as migration0004 } from './migrations/0004_voice_identities';
 import { runtimeJobs as migration0005 } from './migrations/0005_runtime_jobs';
 import { generationProvenance as migration0006 } from './migrations/0006_generation_provenance';
+import { appSettings as migration0007 } from './migrations/0007_app_settings';
 
 export interface Migration {
   version: string; // 形如 '0001'，字典序即执行序
@@ -33,6 +34,7 @@ export const MIGRATIONS: Migration[] = [
   migration0004,
   migration0005,
   migration0006,
+  migration0007,
 ];
 
 export interface MigrateOptions {

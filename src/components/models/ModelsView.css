@@ -47,3 +47,32 @@
 .mc-empty strong{font-size:14px;color:#b8c5cf}.mc-empty span{font-size:12px}
 @media(max-width:1120px){.mc-row-main{flex-wrap:wrap}.mc-row-side{flex:1 1 100%;min-width:0}}
 @media(max-width:780px){.mc-page{padding:20px 15px 90px}.mc-row-main{padding:14px;gap:12px}.mc-row-icon{width:42px;height:42px}.mc-revision{margin-left:0;flex-wrap:wrap}.mc-revision input{width:100%}}
+
+/* P1 #39 存储与保留策略区 */
+.mc-sg{margin-top:18px;border:1px solid #28313c;border-radius:12px;background:var(--mc-card,#0e1117);padding:18px}
+.mc-sg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:14px}
+.mc-sg-head h2{margin:0 0 5px;display:flex;align-items:center;gap:8px;font-size:15px;font-weight:680;letter-spacing:-.015em}
+.mc-sg-head p{margin:0;color:#9ca8b5;font-size:11.5px;line-height:1.6;max-width:560px}
+.mc-sg-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}
+.mc-sg-policy{display:flex;flex-direction:column;gap:12px}
+.mc-sg-field{display:flex;flex-direction:column;gap:5px}
+.mc-sg-field>span{color:#aebbc6;font-size:11.5px;font-weight:600}
+.mc-sg-field>div{display:flex;align-items:center;gap:8px}
+.mc-sg-field input[type=number]{height:34px;width:110px;padding:0 10px;border:1px solid #2b3845;border-radius:7px;background:#0b1118;color:#eef4f8;font-family:'JetBrains Mono',monospace;font-size:12px;outline:0}
+.mc-sg-field input[type=number]:focus{border-color:#18badf;box-shadow:0 0 0 2px rgba(22,200,244,.09)}
+.mc-sg-field input[type=number]:disabled{opacity:.55}
+.mc-sg-field em{color:#788796;font-size:11px;font-style:normal}
+.mc-sg-field small{color:#667281;font-size:10.5px;line-height:1.5}
+.mc-sg-toggle>div{gap:6px}
+.mc-sg-toggle input[type=checkbox]{width:15px;height:15px;accent-color:#16c8f4}
+.mc-sg-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+.mc-sg-usage{border:1px solid #232d38;border-radius:9px;background:#0b1017;padding:14px}
+.mc-sg-usage h3{margin:0 0 10px;font-size:12px;font-weight:680;color:#c4d0da}
+.mc-sg-usage dl{margin:0;display:grid;gap:8px}
+.mc-sg-usage dl div{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11.5px}
+.mc-sg-usage dt{color:#8794a2}
+.mc-sg-usage dd{margin:0;color:#d5e0e8;font-family:'JetBrains Mono',monospace;font-size:11px}
+.mc-sg-empty{margin:0;color:#667281;font-size:11.5px}
+.mc-sg-note{display:flex;align-items:flex-start;gap:6px;margin:12px 0 0;color:#667281;font-size:10.5px;line-height:1.55}
+.mc-sg-note svg{flex:none;margin-top:1px;color:#54cf9f}
+@media(max-width:900px){.mc-sg-grid{grid-template-columns:1fr}}
