@@ -258,6 +258,8 @@ export interface NodeServerOptions extends BaseSupervisorOptions {
   workerUrl: string;
   libraryDir: string;
   geminiApiKey?: string;
+  /** 托管 HF 缓存目录（P1 #32）：注入 Node 的 SEMOVIX_MODEL_CACHE（模型目录 API 扫描同一布局） */
+  modelCacheDir?: string;
 }
 
 const NODE_RESTART_MAX = 3;
@@ -283,7 +285,7 @@ export class NodeServerSupervisor extends ProcessSupervisor {
   }
 
   protected buildCommand() {
-    const { projectRoot, mode, port, workerUrl, libraryDir, geminiApiKey } = this.options;
+    const { projectRoot, mode, port, workerUrl, libraryDir, geminiApiKey, modelCacheDir } = this.options;
     // ELECTRON_RUN_AS_NODE：用 Electron 自带的可执行文件充当 Node 运行时，
     // 桌面环境不依赖系统 PATH 上是否有 node（打包后亦成立）。
     const env: Record<string, string> = {
@@ -294,6 +296,7 @@ export class NodeServerSupervisor extends ProcessSupervisor {
       NODE_ENV: mode === 'packaged' ? 'production' : 'development',
     };
     if (geminiApiKey) env.GEMINI_API_KEY = geminiApiKey;
+    if (modelCacheDir) env.SEMOVIX_MODEL_CACHE = modelCacheDir; // P1 #32：模型目录/registry 与 Worker 同一缓存
 
     if (mode === 'dev') {
       const tsxCli = path.join(projectRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -349,6 +352,8 @@ export interface PythonWorkerOptions extends BaseSupervisorOptions {
   workerRoot: string;
   port: number;
   models: { customVoice: string; voiceDesign: string; base: string; asr: string };
+  /** 托管 HF 缓存目录（P1 #32）：注入 Worker 的 HF_HOME；缺省不注入（Worker 用系统默认缓存） */
+  modelCacheDir?: string;
 }
 
 export class PythonWorkerSupervisor extends ProcessSupervisor {
@@ -375,7 +380,7 @@ export class PythonWorkerSupervisor extends ProcessSupervisor {
   }
 
   protected buildCommand() {
-    const { python, workerRoot, port, models } = this.options;
+    const { python, workerRoot, port, models, modelCacheDir } = this.options;
     const baseArgs = ['-m', 'uvicorn', 'app:app', '--host', '127.0.0.1', '--port', String(port)];
     // 解释器解析优先级与 worker/启动Worker.command 一致：
     // bin > conda env > PATH 上的 python3
@@ -396,6 +401,28 @@ export class PythonWorkerSupervisor extends ProcessSupervisor {
     if (models.voiceDesign) modelEnv.SEMOVIX_VOICE_DESIGN_CKPT = models.voiceDesign;
     if (models.base) modelEnv.SEMOVIX_VOICE_CLONE_CKPT = models.base;
     if (models.asr) modelEnv.SEMOVIX_ASR_MODEL = models.asr;
+
+    // P1 #32 revision 钉定传播：用户无 CKPT 覆盖时，把托管 registry 的 revision
+    // （desiredRevision ?? 已安装 revision）注入 *_REVISION，引擎从托管缓存命中
+    // 已下载快照且不被上游静默升级。registry 缺失/损坏 → 不注入（默认行为）。
+    if (modelCacheDir) {
+      modelEnv.HF_HOME = modelCacheDir;
+      try {
+        const registry = JSON.parse(fs.readFileSync(path.join(modelCacheDir, 'semovix-models.json'), 'utf8')) as Record<string, { desiredRevision?: string | null; revision?: string | null }>;
+        const pin = (key: string, envVar: string, overridden: string) => {
+          if (overridden) return; // 用户本地权重覆盖优先
+          const entry = registry[key];
+          const revision = entry?.desiredRevision ?? entry?.revision ?? null;
+          if (revision) modelEnv[envVar] = revision;
+        };
+        pin('customVoice', 'SEMOVIX_TTS_REVISION', models.customVoice);
+        pin('voiceDesign', 'SEMOVIX_VOICE_DESIGN_REVISION', models.voiceDesign);
+        pin('base', 'SEMOVIX_VOICE_CLONE_REVISION', models.base);
+        pin('asr', 'SEMOVIX_ASR_REVISION', models.asr);
+      } catch {
+        /* registry 尚未创建或损坏：不注入 revision，Worker 走默认 */
+      }
+    }
 
     return {
       ...command,

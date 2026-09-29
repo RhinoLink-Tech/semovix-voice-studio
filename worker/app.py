@@ -89,7 +89,8 @@ IDLE_UNLOAD_SECONDS = float(os.environ.get("SEMOVIX_IDLE_UNLOAD_SECONDS", "1800"
 IDLE_SWEEP_INTERVAL = float(os.environ.get("SEMOVIX_IDLE_SWEEP_INTERVAL", "0") or 0) or max(5.0, min(60.0, IDLE_UNLOAD_SECONDS / 10))
 
 # #30 Worker 协议版本：/health 顶层自述，Node 侧据此判断新特性语义是否可用（加法演进）。
-WORKER_PROTOCOL_VERSION = 2
+# 3（P1 #32）：新增 /models/* 模型下载任务端点。
+WORKER_PROTOCOL_VERSION = 3
 
 app = FastAPI(title="Semovix Voice Worker", version="1.2.0")
 
@@ -959,3 +960,210 @@ def unload(segment: str) -> JSONResponse:
 def _ENGINES_BY_ID(engine_id: str) -> EngineState:
     """经模块全局取引擎（测试 monkeypatch 替换 _TTS 等引用后仍生效）"""
     return {"qwen_tts": _TTS, "voice_design": _VOICE_DESIGN, "voice_clone": _VOICE_CLONE, "whisper_asr": _ASR}[engine_id]
+
+
+# ---------------------------------------------------------------------------
+# 模型下载任务（P1 #32，协议 3）：后台线程执行 snapshot_download
+#
+# Node 的模型下载执行器经 /models/* 驱动：
+#   POST /models/{key}/download {repoId, revision} → 200 {task}（同 key 在途幂等复用）
+#   GET  /models/tasks/{taskId}                    → {task} | 404
+#   POST /models/tasks/{taskId}/cancel             → 202 {task}（协作取消，分片保留可续传）
+# 缓存位置 = HF_HOME 环境变量（Electron 注入托管目录；缺省 ~/.cache/huggingface），
+# 与 Node 侧 registry 扫描的是同一份布局（models--org--name/{refs,snapshots,blobs}）。
+# ---------------------------------------------------------------------------
+
+_MODEL_TASK_LOCK = threading.Lock()
+_MODEL_TASKS: dict[str, dict[str, Any]] = {}
+# key（customVoice/voiceDesign/base/asr）→ 在途 taskId；同 key 只允许一个下载
+_MODEL_ACTIVE_BY_KEY: dict[str, str] = {}
+
+_MODEL_TASK_KEYS = ("customVoice", "voiceDesign", "base", "asr")
+
+
+class _ModelDownloadCancelled(BaseException):
+    """进度回调里抛出以中断 snapshot_download（不吞真实异常）"""
+
+
+class _TaskProgress:
+    """最小 tqdm 替身：把 snapshot_download 的逐文件字节进度喂进任务记账。"""
+
+    def __init__(self, task: dict[str, Any], **kwargs: Any):
+        self._task = task
+
+    def __enter__(self) -> "_TaskProgress":
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        return False
+
+    def update(self, n: int = 1) -> None:
+        if not n:
+            return
+        with _MODEL_TASK_LOCK:
+            task = _MODEL_TASKS.get(self._task["taskId"])
+            if task is not self._task:
+                return  # 任务已被清理：静默停记
+            task["downloadedBytes"] = int(task.get("downloadedBytes", 0)) + int(n)
+            task["updatedAt"] = _now_iso()
+            if task.get("_cancel"):
+                raise _ModelDownloadCancelled()
+
+    def close(self) -> None:
+        pass
+
+    def refresh(self) -> None:
+        pass
+
+    @property
+    def n(self) -> int:
+        return 0
+
+
+def _dir_size_bytes(path: Path) -> Optional[int]:
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                try:
+                    total += entry.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        return None
+    return total
+
+
+def _run_model_download(task_id: str, repo_id: str, revision: Optional[str]) -> None:
+    """后台线程体：真实 snapshot_download（原生断点续传 + etag 校验）。"""
+    with _MODEL_TASK_LOCK:
+        task = _MODEL_TASKS.get(task_id)
+    if task is None:
+        return
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_path = snapshot_download(
+            repo_id=repo_id,
+            revision=revision,
+            tqdm_class=lambda **kwargs: _TaskProgress(task, **kwargs),
+        )
+        resolved = Path(snapshot_path).name  # snapshots/<sha> → 实际 commit
+        size = _dir_size_bytes(Path(snapshot_path))
+        with _MODEL_TASK_LOCK:
+            task["state"] = "completed"
+            task["revision"] = resolved
+            task["snapshotPath"] = str(snapshot_path)
+            task["sizeBytes"] = size
+            task["error"] = None
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载完成 {repo_id}@{resolved[:12]} size={size}", flush=True)
+    except _ModelDownloadCancelled:
+        with _MODEL_TASK_LOCK:
+            task["state"] = "cancelled"
+            task["error"] = "下载已取消（已下载分片保留在缓存，可续传）"
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载取消 {repo_id}（已下载 {task.get('downloadedBytes', 0)} 字节）", flush=True)
+    except Exception as e:  # noqa: BLE001 - 状态如实上报，进程不崩溃
+        with _MODEL_TASK_LOCK:
+            task["state"] = "failed"
+            task["error"] = f"{type(e).__name__}: {e}"
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载失败 {repo_id}: {task['error']}", flush=True)
+    finally:
+        with _MODEL_TASK_LOCK:
+            active = _MODEL_ACTIVE_BY_KEY.get(task["key"])
+            if active == task_id:
+                del _MODEL_ACTIVE_BY_KEY[task["key"]]
+
+
+def _task_public(task: dict[str, Any]) -> dict[str, Any]:
+    """对外形状（camelCase，与 Node WorkerModelTask 对齐；内部下划线键不下发）。"""
+    return {
+        "taskId": task["taskId"],
+        "key": task["key"],
+        "repoId": task["repoId"],
+        "requestedRevision": task["requestedRevision"],
+        "state": task["state"],
+        "downloadedBytes": task.get("downloadedBytes", 0),
+        "totalBytes": task.get("totalBytes"),
+        "revision": task.get("revision"),
+        "snapshotPath": task.get("snapshotPath"),
+        "sizeBytes": task.get("sizeBytes"),
+        "error": task.get("error"),
+        "createdAt": task["createdAt"],
+        "updatedAt": task["updatedAt"],
+    }
+
+
+class ModelDownloadRequest(BaseModel):
+    repoId: str = Field(min_length=1)
+    revision: Optional[str] = Field(default=None)
+
+
+@app.post("/models/{key}/download")
+def models_download(key: str, req: ModelDownloadRequest) -> JSONResponse:
+    if key not in _MODEL_TASK_KEYS:
+        raise HTTPException(status_code=400, detail={"error": f"未知模型 key: {key}", "code": "unknown_model"})
+    repo_id = req.repoId.strip()
+    revision = (req.revision or None) or None
+
+    with _MODEL_TASK_LOCK:
+        active_id = _MODEL_ACTIVE_BY_KEY.get(key)
+        if active_id and active_id in _MODEL_TASKS:
+            active = _MODEL_TASKS[active_id]
+            if active["repoId"] == repo_id and (active["requestedRevision"] or None) == revision:
+                return JSONResponse({"task": _task_public(active)})  # 幂等复用在途任务
+            raise HTTPException(
+                status_code=409,
+                detail={"error": f"{key} 已有不同目标的下载任务在进行中", "code": "model_task_conflict", "taskId": active_id},
+            )
+
+        task_id = f"mdl-{int(time.time() * 1000):x}-{hashlib.sha256(f'{key}{repo_id}{revision}'.encode()).hexdigest()[:8]}"
+        now = _now_iso()
+        task: dict[str, Any] = {
+            "taskId": task_id,
+            "key": key,
+            "repoId": repo_id,
+            "requestedRevision": revision,
+            "state": "downloading",
+            "downloadedBytes": 0,
+            "totalBytes": None,
+            "revision": None,
+            "snapshotPath": None,
+            "sizeBytes": None,
+            "error": None,
+            "createdAt": now,
+            "updatedAt": now,
+            "_cancel": False,
+        }
+        _MODEL_TASKS[task_id] = task
+        _MODEL_ACTIVE_BY_KEY[key] = task_id
+
+    threading.Thread(target=_run_model_download, args=(task_id, repo_id, revision), daemon=True, name=f"model-dl-{key}").start()
+    return JSONResponse({"task": _task_public(task)})
+
+
+def _find_task(task_id: str) -> Optional[dict[str, Any]]:
+    with _MODEL_TASK_LOCK:
+        return _MODEL_TASKS.get(task_id)
+
+
+@app.get("/models/tasks/{task_id}")
+def models_task(task_id: str) -> JSONResponse:
+    task = _find_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail={"error": f"下载任务不存在: {task_id}", "code": "model_task_not_found"})
+    return JSONResponse({"task": _task_public(task)})
+
+
+@app.post("/models/tasks/{task_id}/cancel")
+def models_task_cancel(task_id: str) -> JSONResponse:
+    with _MODEL_TASK_LOCK:
+        task = _MODEL_TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail={"error": f"下载任务不存在: {task_id}", "code": "model_task_not_found"})
+        if task["state"] == "downloading":
+            task["_cancel"] = True  # 协作取消：下个进度回调抛 _ModelDownloadCancelled
+            task["updatedAt"] = _now_iso()
+    return JSONResponse(status_code=202, content={"task": _task_public(task)})

@@ -637,3 +637,139 @@ class TestModelLifecycle:
         assert all(r.status_code == 200 for r in results)
         assert model.max_active == 1  # 绝不并行进入推理
         assert client.get("/health").json()["engines"]["qwen_tts"]["inFlight"] == 0
+
+
+# ---------------- 模型下载任务（P1 #32，协议 3） ----------------
+
+
+class TestModelDownload:
+    """POST /models/{key}/download 的任务合同：camelCase 形状、同 key 幂等复用、
+    不同目标 409、协作取消（_cancel 标志 → 进度回调抛出中断）、/health 协议版本 3。
+
+    线程体被 monkeypatch 替换——不触发任何真实 snapshot_download / 网络。
+    """
+
+    SHA = "5d41402abc4b2a76b9719d911017c592"
+
+    @pytest.fixture(autouse=True)
+    def reset_tasks(self, monkeypatch):
+        monkeypatch.setattr(worker, "_MODEL_TASKS", {})
+        monkeypatch.setattr(worker, "_MODEL_ACTIVE_BY_KEY", {})
+
+    def _stub_run(self, monkeypatch, started: threading.Event, release: threading.Event):
+        """线程替身：标记启动后挂起；放行时按 _cancel 收敛为 cancelled/completed"""
+
+        def fake_run(task_id: str, repo_id: str, revision) -> None:
+            started.set()
+            release.wait(timeout=10)
+            try:
+                with worker._MODEL_TASK_LOCK:
+                    task = worker._MODEL_TASKS.get(task_id)
+                    if task is not None:
+                        task["state"] = "cancelled" if task.get("_cancel") else "completed"
+                        task["revision"] = self.SHA
+                        task["updatedAt"] = worker._now_iso()
+            finally:
+                # 与真实线程体一致的收尾：终态释放 key 占位
+                with worker._MODEL_TASK_LOCK:
+                    task = worker._MODEL_TASKS.get(task_id)
+                    key = task["key"] if task is not None else None
+                    if key and worker._MODEL_ACTIVE_BY_KEY.get(key) == task_id:
+                        del worker._MODEL_ACTIVE_BY_KEY[key]
+
+        monkeypatch.setattr(worker, "_run_model_download", fake_run)
+
+    def test_health_reports_protocol_3(self):
+        r = client.get("/health")
+        assert r.status_code == 200
+        assert r.json()["protocolVersion"] == 3
+
+    def test_unknown_key_rejected(self):
+        r = client.post("/models/nope/download", json={"repoId": "x/y"})
+        assert r.status_code == 400
+        assert r.json()["detail"]["code"] == "unknown_model"
+
+    def test_download_task_shape_and_lifecycle(self, monkeypatch):
+        started, release = threading.Event(), threading.Event()
+        self._stub_run(monkeypatch, started, release)
+
+        r = client.post("/models/customVoice/download", json={"repoId": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"})
+        assert r.status_code == 200
+        task = r.json()["task"]
+        assert task["key"] == "customVoice"
+        assert task["repoId"] == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+        assert task["requestedRevision"] is None
+        assert task["state"] == "downloading"
+        assert "_cancel" not in task  # 内部下划线键绝不下发
+        assert started.wait(timeout=5)
+
+        release.set()
+        for _ in range(200):  # 线程收敛后再查
+            if client.get(f"/models/tasks/{task['taskId']}").json()["task"]["state"] == "completed":
+                break
+            time.sleep(0.01)
+        final = client.get(f"/models/tasks/{task['taskId']}").json()["task"]
+        assert final["state"] == "completed"
+        assert final["revision"] == self.SHA
+
+        assert client.get("/models/tasks/mdl-missing").status_code == 404
+
+    def test_same_key_idempotent_reuse_and_conflict(self, monkeypatch):
+        started, release = threading.Event(), threading.Event()
+        self._stub_run(monkeypatch, started, release)
+
+        first = client.post("/models/asr/download", json={"repoId": "openai/whisper-large-v3-turbo"}).json()["task"]
+        assert started.wait(timeout=5)
+
+        # 同 repo 同 revision → 幂等复用在途任务
+        again = client.post("/models/asr/download", json={"repoId": "openai/whisper-large-v3-turbo"})
+        assert again.status_code == 200
+        assert again.json()["task"]["taskId"] == first["taskId"]
+
+        # 同 key 不同目标 → 409（不悄悄换目标）
+        conflict = client.post("/models/asr/download", json={"repoId": "openai/whisper-large-v3-turbo", "revision": "v1"})
+        assert conflict.status_code == 409
+        assert conflict.json()["detail"]["code"] == "model_task_conflict"
+
+        release.set()
+
+    def test_cancel_is_cooperative_flag(self, monkeypatch):
+        started, release = threading.Event(), threading.Event()
+        self._stub_run(monkeypatch, started, release)
+
+        task = client.post("/models/base/download", json={"repoId": "Qwen/Qwen3-TTS-12Hz-1.7B-Base"}).json()["task"]
+        assert started.wait(timeout=5)
+
+        r = client.post(f"/models/tasks/{task['taskId']}/cancel")
+        assert r.status_code == 202
+        with worker._MODEL_TASK_LOCK:
+            assert worker._MODEL_TASKS[task["taskId"]]["_cancel"] is True
+        assert worker._MODEL_ACTIVE_BY_KEY.get("base") == task["taskId"]  # 结束前仍占位
+
+        release.set()
+        for _ in range(200):
+            with worker._MODEL_TASK_LOCK:
+                if worker._MODEL_TASKS[task["taskId"]]["state"] == "cancelled":
+                    break
+            time.sleep(0.01)
+        with worker._MODEL_TASK_LOCK:
+            assert worker._MODEL_TASKS[task["taskId"]]["state"] == "cancelled"
+        assert "base" not in worker._MODEL_ACTIVE_BY_KEY  # 终态释放 key 占位
+
+    def test_task_progress_feeds_bytes_and_raises_on_cancel(self):
+        """_TaskProgress：逐文件字节进任务记账；_cancel 置位后下个回调抛 _ModelDownloadCancelled"""
+        task = {"taskId": "t-x", "key": "asr", "downloadedBytes": 0, "_cancel": False}
+        worker._MODEL_TASKS["t-x"] = task
+        progress = worker._TaskProgress(task)
+        with progress:
+            progress.update(100)
+            progress.update(50)
+            assert task["downloadedBytes"] == 150
+
+            task["_cancel"] = True
+            with pytest.raises(worker._ModelDownloadCancelled):
+                progress.update(1)
+
+        del worker._MODEL_TASKS["t-x"]
+        progress.update(10)  # 任务已被清理：静默停记（既不抛错也不累计）
+        assert task["downloadedBytes"] == 151

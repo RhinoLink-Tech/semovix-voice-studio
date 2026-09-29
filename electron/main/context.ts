@@ -76,6 +76,7 @@ export class DesktopContext {
       workerUrl: `http://127.0.0.1:${workerPort}`,
       libraryDir: this.libraryDir(),
       geminiApiKey,
+      modelCacheDir: this.modelCacheDir(), // P1 #32：模型目录 API 与 Worker 共用托管缓存
     });
     this.pythonWorkerSupervisor = new PythonWorkerSupervisor({
       logger: this.logger,
@@ -84,12 +85,18 @@ export class DesktopContext {
       workerRoot: options.workerRoot,
       port: workerPort,
       models: this.setup.models,
+      modelCacheDir: this.modelCacheDir(),
     });
   }
 
   /** 素材目录：向导未选过 → userData/library（P0-A #7：桌面不再依赖安装目录） */
   libraryDir(): string {
     return this.setup.libraryDir || this.paths.libraryDir;
+  }
+
+  /** 托管 HF 模型缓存目录（P1 #32）：Node 扫描与 Worker 下载共用，位于不可覆盖的 cache 区 */
+  modelCacheDir(): string {
+    return path.join(this.paths.cacheDir, 'huggingface');
   }
 
   getSetup(): DesktopSetup {

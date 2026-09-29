@@ -11,7 +11,7 @@ import { fail } from './respond';
 
 export const jobsRouter = Router();
 
-const JOB_TYPES: readonly JobType[] = ['voice-design', 'voice-clone', 'validation', 'synthesis', 'transcription'];
+const JOB_TYPES: readonly JobType[] = ['voice-design', 'voice-clone', 'validation', 'synthesis', 'transcription', 'model-download'];
 
 jobsRouter.get('/jobs', async (req, res) => {
   const type = typeof req.query.type === 'string' ? req.query.type : undefined;

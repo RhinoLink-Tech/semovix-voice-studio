@@ -12,7 +12,7 @@
  */
 import type { WorkerEngineId } from '../engines/qwenWorker';
 
-export type JobType = 'voice-design' | 'voice-clone' | 'validation' | 'synthesis' | 'transcription';
+export type JobType = 'voice-design' | 'voice-clone' | 'validation' | 'synthesis' | 'transcription' | 'model-download';
 export type JobStatus = 'queued' | 'warming' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 /** P0-B #15：取消原因必须可区分 */
@@ -38,8 +38,8 @@ export interface JobProgress {
 
 /** 领域 JSON 载荷定位符；载荷本身（工件与领域细节）仍是各领域的权威存储 */
 export interface JobPayloadRef {
-  kind: 'design-batch' | 'stability-validation' | 'provider-preview' | 'source-validation';
-  externalId: string; // design-batch/stability-validation: batchId；provider-preview: previewId；source-validation: identityId#createdAtEpoch
+  kind: 'design-batch' | 'stability-validation' | 'provider-preview' | 'source-validation' | 'model-download';
+  externalId: string; // design-batch/stability-validation: batchId；provider-preview: previewId；source-validation: identityId#createdAtEpoch；model-download: ModelKey
   path: string;       // 领域 JSON 绝对路径
   identityId?: string; // provider-preview/source-validation：载荷归属的声音角色（externalId 不含或不含可读形式）
 }

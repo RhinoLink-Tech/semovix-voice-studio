@@ -21,6 +21,7 @@ import { voiceAdditionalSourcesRouter } from './routes/voiceAdditionalSources';
 import { voiceSourceLifecycleRouter } from './routes/voiceSourceLifecycle';
 import { voiceProfilesRouter } from './routes/voiceProfiles';
 import { jobsRouter } from './routes/jobs';
+import { modelsRouter } from './routes/models';
 import { eventsRouter } from './routes/events';
 
 export function createApp(): express.Express {
@@ -46,6 +47,8 @@ export function createApp(): express.Express {
   app.use('/api', voiceSourceLifecycleRouter);
   app.use('/api', voiceProfilesRouter);
   app.use('/api', jobsRouter);
+  // P1 #32：模型目录 / 下载 / 删除 / 版本切换（内部经统一 Job 体系）
+  app.use('/api', modelsRouter);
   // P1 #34：SSE 事件流（长连接；自身不 next 错误，不经过下方错误中间件）
   app.use('/api', eventsRouter);
 
