@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { createApp } from './server/app';
 import { getConfig } from './server/config';
+import { getDb } from './server/db/libraryStore';
 import { recoverJobsOnBoot, shutdownActiveJobs } from './server/jobs/runner';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +19,15 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = createApp();
   const { port, isProduction } = getConfig();
+
+  // P0-B #30：启动即打开素材库跑迁移——失败（已恢复批次前备份）时如实退出进程，
+  // 不让服务带着不确定 schema 继续应答
+  try {
+    getDb();
+  } catch (error) {
+    console.error('素材库迁移失败（库已回滚到迁移前备份）：', error);
+    process.exit(1);
+  }
 
   // 桌面壳健康检查身份标识：端口被本机其他服务（如 Grafana，302→登录页 200）
   // 接管时，Electron 靠此字段甄别"应答的确实是本服务"

@@ -280,7 +280,9 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
                 ? '本地 Qwen3-TTS 引擎离线合成：官方音色目录 + 情感/停顿指令，24kHz WAV 输出'
                 : provider === 'webSpeech'
                   ? '浏览器系统语音实时预览（不产生可保存的素材文件）'
-                  : '基于 Google Gemini 语音大模型，提供超自然多角色情感配音与多角色播客对话合成'}
+                  : provider === 'voiceProfile'
+                    ? '使用已发布冻结的 Voice Profile 合成：Manifest 与参考音频逐次校验，生成留痕含角色/版本/Hash'
+                    : '基于 Google Gemini 语音大模型，提供超自然多角色情感配音与多角色播客对话合成'}
             </p>
           </div>
 
@@ -403,7 +405,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
             <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block mb-2">
               选择AI声线 (Voice Model)
               <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-cyan-300">
-                {provider === 'qwen3Tts' ? 'Qwen 官方目录' : provider === 'webSpeech' ? '浏览器系统音色' : 'Google Voice'}
+                {provider === 'qwen3Tts' ? 'Qwen 官方目录' : provider === 'webSpeech' ? '浏览器系统音色' : provider === 'voiceProfile' ? '已发布 Voice Profile' : 'Google Voice'}
               </span>
             </label>
             {catalog.voices.length === 0 && (
@@ -412,7 +414,9 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
                   ? '音色目录尚未就绪：Worker 启动且模型加载完成后，官方音色会自动出现（上方状态条实时更新）。'
                   : provider === 'webSpeech'
                     ? '当前浏览器未暴露系统音色。'
-                    : '音色目录不可用。'}
+                    : provider === 'voiceProfile'
+                      ? '库中尚无已发布的 Voice Profile：请在声音角色工作台完成验证与人工回听后发布冻结版本。'
+                      : '音色目录不可用。'}
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

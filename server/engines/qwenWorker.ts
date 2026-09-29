@@ -68,6 +68,8 @@ export interface WorkerStatus {
   voice_clone: WorkerEngineSnapshot;
   whisper_asr: WorkerEngineSnapshot;
   process?: WorkerProcessInfo;
+  /** Worker /health 顶层协议版本（P0-B #30 起上报；旧 Worker 缺省） */
+  protocolVersion?: number;
 }
 
 function unreachable(): WorkerStatus {
@@ -93,6 +95,7 @@ export async function getWorkerStatus(): Promise<WorkerStatus> {
     const data = (await res.json()) as {
       engines?: Record<WorkerEngineId, Record<string, unknown>>;
       process?: WorkerProcessInfo;
+      protocolVersion?: number;
     };
     const snap = (id: WorkerEngineId): WorkerEngineSnapshot => {
       const raw = data.engines?.[id] ?? {};
@@ -116,6 +119,7 @@ export async function getWorkerStatus(): Promise<WorkerStatus> {
       voice_clone: snap('voice_clone'),
       whisper_asr: snap('whisper_asr'),
       ...(data.process !== undefined ? { process: data.process } : {}),
+      ...(data.protocolVersion !== undefined ? { protocolVersion: Number(data.protocolVersion) || 0 } : {}),
     };
   } catch {
     return unreachable();

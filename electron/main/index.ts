@@ -47,9 +47,11 @@ if (isSmoke) {
   }
 }
 
-// dev 模式下 main.cjs 位于 <root>/electron/build/；打包后用 app path
+// dev 模式下 main.cjs 位于 <root>/electron/build/；打包后 dist/ 与 worker/ 通过
+// electron-builder extraResources 落在 Resources/app/（P0-B #29）——ELECTRON_RUN_AS_NODE
+// 与 Python 进程无法从 asar 内执行脚本，服务端运行面必须在真实磁盘上
 const projectRoot = app.isPackaged
-  ? app.getAppPath()
+  ? path.join(process.resourcesPath, 'app')
   : path.resolve(__dirname, '..', '..');
 const workerRoot = path.join(projectRoot, 'worker');
 const appVersion = app.getVersion() !== '0.0.0' ? app.getVersion() : '0.1.0-desktop-beta';

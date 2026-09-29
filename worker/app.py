@@ -25,6 +25,7 @@ Semovix Voice Studio - Python FastAPI Worker（硬性约束 #14）
   - #22 折中方案：大型 Qwen 模型（qwen_tts/voice_design/voice_clone）同一时刻只允许一个常驻，
     切换（warmup 另一个大模型）即显式卸载既有常驻者；在途推理结束后再卸载（延迟淘汰）
   - #23 每引擎推理并发 = 1（infer_lock）；推理在 FastAPI 线程池执行，不阻塞事件循环（/health 永远可达）
+  - #30 /health 顶层上报 protocolVersion（协议加法演进；Node 侧低于门槛仅日志提示，不伪装兼容）
 
   - GET  /health          永不触发加载；进程可达即 200，如实上报各引擎 state
   - POST /warmup/qwen     ready → 200；cold/loading → 202 {retry:true}；error → 503 {retry:true}（同时触发重载）
@@ -86,6 +87,9 @@ _REVISIONS: dict[str, Optional[str]] = {
 IDLE_UNLOAD_SECONDS = float(os.environ.get("SEMOVIX_IDLE_UNLOAD_SECONDS", "1800"))
 # 巡检间隔（默认取空闲阈值的 1/10，夹在 [5s, 60s]）；测试可调小。
 IDLE_SWEEP_INTERVAL = float(os.environ.get("SEMOVIX_IDLE_SWEEP_INTERVAL", "0") or 0) or max(5.0, min(60.0, IDLE_UNLOAD_SECONDS / 10))
+
+# #30 Worker 协议版本：/health 顶层自述，Node 侧据此判断新特性语义是否可用（加法演进）。
+WORKER_PROTOCOL_VERSION = 2
 
 app = FastAPI(title="Semovix Voice Worker", version="1.2.0")
 
@@ -876,6 +880,8 @@ def health() -> JSONResponse:
     return JSONResponse(
         {
             "ok": True,
+            # #30 协议版本：Node 侧低于门槛时仅日志提示，不伪装兼容
+            "protocolVersion": WORKER_PROTOCOL_VERSION,
             "engines": {
                 "qwen_tts": {**_snapshot(_TTS), "checkpoint": _TTS.checkpoint or TTS_CKPT},
                 "voice_design": {**_snapshot(_VOICE_DESIGN), "checkpoint": _VOICE_DESIGN.checkpoint or VOICE_DESIGN_CKPT},

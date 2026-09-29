@@ -56,13 +56,13 @@ guofengRouter.post('/generate-guofeng-composition', async (req, res) => {
   if (typeof body.prompt !== 'string' || body.prompt.trim().length > 500 ||
       !Array.isArray(body.instruments) || body.instruments.length === 0 || body.instruments.every((instrument: unknown) => instrument === 'drum') ||
       body.instruments.some((instrument: unknown) => !GUOFENG_INSTRUMENTS.includes(instrument as typeof GUOFENG_INSTRUMENTS[number]))) {
-    return res.status(400).json({ error: '请填写不超过 500 字的描述，并至少选择一种有效乐器。' });
+    return res.status(400).json({ error: '请填写不超过 500 字的描述，并至少选择一种有效乐器。', code: 'invalid_request' });
   }
   const requestedDuration = Number(body.durationSec);
   const requestedBpm = Number(body.bpm);
   if (!Number.isFinite(requestedDuration) || requestedDuration < 15 || requestedDuration > 30 ||
       !Number.isFinite(requestedBpm) || requestedBpm < 72 || requestedBpm > 120) {
-    return res.status(400).json({ error: '时长须为 15–30 秒，速度须为 72–120 BPM。' });
+    return res.status(400).json({ error: '时长须为 15–30 秒，速度须为 72–120 BPM。', code: 'invalid_request' });
   }
   const request: GuofengRequest = {
     prompt: body.prompt,
@@ -103,6 +103,6 @@ guofengRouter.post('/generate-guofeng-composition', async (req, res) => {
     const composition = createGuofengComposition(request, motifs, usedEngine);
     return res.json({ composition, engine: usedEngine, warning });
   } catch (error) {
-    return res.status(500).json({ error: error instanceof Error ? error.message : '国风编曲失败。' });
+    return res.status(500).json({ error: error instanceof Error ? error.message : '国风编曲失败。', code: 'internal_error' });
   }
 });

@@ -7,6 +7,7 @@ import { qwenWorkerVoiceClone, waitForWorkerEngineReady, WorkerNotReadyError } f
 import { parseWav } from '../audio/wav';
 import { getVoiceIdentity } from './voiceIdentities';
 import { fail } from './respond';
+import { writeBinaryAtomic, writeJsonAtomic as writeJson } from '../lib/atomicFiles';
 import { uploadSingle } from './upload';
 import { invalidateSourceValidation } from './voiceSourceLifecycle';
 
@@ -84,12 +85,6 @@ const auditFile = (identityId: string) => path.join(root(identityId), 'audit.jso
 async function readJson<T>(file: string, fallback: T): Promise<T> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch (error: any) { if (error?.code === 'ENOENT') return fallback; throw error; }
-}
-async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, JSON.stringify(value, null, 2) + '\n', 'utf8');
-  await fs.rename(temporary, file);
 }
 async function appendAudit(identityId: string, action: string, detail: Record<string, unknown> = {}) {
   const file = auditFile(identityId);
@@ -223,9 +218,7 @@ voiceCloneRouter.post('/voice-identities/:identityId/clone-authorization/documen
     };
     await fs.mkdir(authorizationDocumentsDir(req.params.identityId), { recursive: true });
     const target = path.join(authorizationDocumentsDir(req.params.identityId), document.fileName);
-    const temporary = `${target}.${crypto.randomUUID()}.tmp`;
-    await fs.writeFile(temporary, req.file.buffer);
-    await fs.rename(temporary, target);
+    await writeBinaryAtomic(target, req.file.buffer); // #26
     const authorization = { ...makeAuthorization(req.body || {}, existing), document, updatedAt: new Date().toISOString() };
     await writeJson(authorizationFile(req.params.identityId), authorization);
     await invalidateSourceValidation(req.params.identityId, 'clone_authorization_document_changed');
@@ -282,10 +275,8 @@ voiceCloneRouter.post('/voice-identities/:identityId/clone-references', uploadSi
       createdAt: new Date().toISOString(),
     };
     await fs.mkdir(referencesDir(req.params.identityId), { recursive: true });
-    const temporary = path.join(referencesDir(req.params.identityId), `.${id}.${crypto.randomUUID()}.tmp`);
     const target = path.join(referencesDir(req.params.identityId), reference.fileName);
-    await fs.writeFile(temporary, req.file.buffer);
-    await fs.rename(temporary, target);
+    await writeBinaryAtomic(target, req.file.buffer); // #26
     await writeJson(referencesFile(req.params.identityId), [...references, reference]);
     await invalidateSourceValidation(req.params.identityId, 'clone_reference_added');
     await appendAudit(req.params.identityId, 'clone_reference_archived', { referenceId: reference.id, sha256: reference.sha256, primary: reference.primary });
@@ -361,9 +352,7 @@ voiceCloneRouter.post('/voice-identities/:identityId/clone-samples', async (req,
     };
     await fs.mkdir(samplesDir(req.params.identityId), { recursive: true });
     const target = path.join(samplesDir(req.params.identityId), sample.fileName);
-    const temporary = `${target}.${crypto.randomUUID()}.tmp`;
-    await fs.writeFile(temporary, wav);
-    await fs.rename(temporary, target);
+    await writeBinaryAtomic(target, wav); // #26
     const samples = await readJson<CloneSample[]>(samplesFile(req.params.identityId), []);
     await writeJson(samplesFile(req.params.identityId), [...samples, sample]);
     await invalidateSourceValidation(req.params.identityId, 'clone_sample_generated');

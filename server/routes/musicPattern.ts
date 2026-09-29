@@ -144,6 +144,6 @@ Each track must have an array of 16 booleans for 'steps', and for Bass and Lead,
     res.json({ success: true, pattern, engine: 'gemini' });
   } catch (error: any) {
     console.error('Music pattern error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate beat pattern.' });
+    res.status(500).json({ error: error.message || 'Failed to generate beat pattern.', code: 'internal_error' });
   }
 });

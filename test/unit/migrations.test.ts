@@ -96,6 +96,25 @@ describe('migrate()', () => {
     db.close();
   });
 
+  it('adds nullable provenance columns to generations (P0-B #28)', () => {
+    const db = new Database(path.join(dir, 'library.db'));
+    migrate(db);
+
+    const columns = (db.prepare("PRAGMA table_info('generations')").all() as Array<{ name: string }>)
+      .map(column => column.name);
+    expect(columns).toEqual(expect.arrayContaining([
+      'voice_identity_id', 'voice_profile_version', 'manifest_hash',
+      'model_repo', 'model_revision', 'seed', 'device',
+      'input_text_sha256', 'output_sha256',
+    ]));
+
+    // 旧库升级路径：0002 时代的既有行补列后全 NULL，不留默认假值
+    db.prepare(`INSERT INTO generations (id, kind, engine, status, created_at) VALUES ('legacy-1', 'tts', 'gemini', 'done', '2026-01-01T00:00:00Z')`).run();
+    const row = db.prepare('SELECT voice_identity_id, manifest_hash, output_sha256, seed FROM generations WHERE id = ?').get('legacy-1') as Record<string, null>;
+    expect(row).toEqual({ voice_identity_id: null, manifest_hash: null, output_sha256: null, seed: null });
+    db.close();
+  });
+
   it('runs each migration at most once even when list grows', () => {
     const db = new Database(path.join(dir, 'library.db'));
     migrate(db);

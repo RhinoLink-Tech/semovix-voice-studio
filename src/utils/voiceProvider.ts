@@ -14,6 +14,7 @@ import { AVAILABLE_VOICES } from './voiceModelConfig';
 export function providerForTtsModel(ttsModel: string): VoiceProvider {
   if (ttsModel === 'qwen3-tts-local') return 'qwen3Tts';
   if (ttsModel === 'web-speech-native') return 'webSpeech';
+  if (ttsModel === 'voice-profile') return 'voiceProfile';
   return 'gemini'; // 白名单内的 gemini-*-tts 模型
 }
 
@@ -88,6 +89,7 @@ export function withVoiceSelection(
 export function providerIdForTtsModel(ttsModel: string): 'google' | 'qwen' | 'browser' {
   const provider = providerForTtsModel(ttsModel);
   if (provider === 'gemini') return 'google';
-  if (provider === 'qwen3Tts') return 'qwen';
+  // voiceProfile 的实际推理由本地 Qwen 引擎承担（Base 克隆 / CustomVoice 预置）
+  if (provider === 'qwen3Tts' || provider === 'voiceProfile') return 'qwen';
   return 'browser';
 }

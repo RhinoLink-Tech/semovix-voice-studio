@@ -11,6 +11,9 @@ import { IdempotencyConflictError } from '../jobs/errors';
 import '../jobs/executors/sourceValidation';
 import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities';
 import { fail } from './respond';
+// #26 原子写公共工具；executor 仍从本模块 import 该名字
+import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
+export { writeJson };
 
 /**
  * 非 AI 原创来源的验证与冻结。
@@ -69,12 +72,6 @@ function sourceFile(id: string, relative: string) { return path.join(root(id), r
 export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch (error: any) { if (error?.code === 'ENOENT') return null; throw error; }
-}
-export async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  await fs.rename(temporary, file);
 }
 export async function appendAudit(identityId: string, event: Record<string, unknown>) {
   const file = path.join(root(identityId), 'source-validation', 'audit.jsonl');
@@ -298,6 +295,9 @@ voiceSourceLifecycleRouter.post('/voice-identities/:identityId/source-voice-prof
             ? await captureModelIdentity('qwen_tts')
             : null,
         language: sourceResult.identity.language, usageBoundaries: decision.usageBoundaries,
+        // #27 生产消费：reference.wav 对应的参考文本（克隆=样音测试文本 / Provider=试听文案 / 导入=包内记录）。
+        // 旧版本冻结的 Profile 没有此字段——消费侧遇到 Base 模型缺失时如实报错，不猜测
+        referenceText: inspected.audio.expectedText || null,
         source: validation.snapshot, validation: { report: { file: 'validation-report.json', sha256: hash(validationContent) }, humanListeningConfirmed: true, completedAt: validation.completedAt, textConsistency: validation.textConsistency, checks: validation.checks },
         referenceAudio: { file: 'reference.wav', sha256: validation.audio.sha256, duration: validation.audio.duration, sampleRate: validation.audio.sampleRate },
       };

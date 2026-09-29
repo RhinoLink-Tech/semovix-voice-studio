@@ -140,6 +140,15 @@ export const AVAILABLE_TTS_MODELS: ModelOptionInfo[] = [
     capabilities: ['完全离线免费', '9 种预置音色', '情感/停顿指令控制', '24kHz WAV 输出'],
   },
   {
+    id: 'voice-profile',
+    name: '已发布 Voice Profile',
+    provider: '本库冻结产物 · 本地引擎',
+    description: '使用声音角色工作台发布冻结的 Voice Profile 合成：每次调用先校验冻结 Manifest 与参考音频的 SHA-256，再按 Profile 锁定的生产模型路由（Base 参考音频克隆 / CustomVoice 预置音色），生成留痕含角色、版本与 Manifest Hash。',
+    tag: '冻结身份可溯源',
+    badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/30',
+    capabilities: ['Manifest/参考音频双重校验', '按冻结版本精确路由', '生成留痕含溯源', '使用边界随版本锁定'],
+  },
+  {
     id: 'web-speech-native',
     name: 'Web Audio / Local Browser Speech Engine',
     provider: 'Client-Side Offline',

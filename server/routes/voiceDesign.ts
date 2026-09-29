@@ -2,6 +2,9 @@ import { createHash, randomInt } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { Router } from 'express';
+import { fail } from './respond';
+import { resolveWithin } from '../lib/safeFs';
+import { writeBinaryAtomic } from '../lib/atomicFiles';
 import { getConfig } from '../config';
 import { submitJob } from '../jobs/runner';
 import { findByIdempotencyKey } from '../jobs/store';
@@ -69,10 +72,8 @@ async function runtimeStatus() {
 
 export async function writeBatch(batch: Batch) {
   batch.updatedAt = new Date().toISOString();
-  const file = manifestPath(batch.id);
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(batch, null, 2));
-  await fs.rename(tmp, file);
+  // #26 公共原子写：随机临时名（旧固定 `.tmp` 名在并发写时会互相覆盖）
+  await writeBinaryAtomic(manifestPath(batch.id), JSON.stringify(batch, null, 2));
 }
 
 export async function readBatch(id: string): Promise<Batch | null> {
@@ -157,9 +158,9 @@ voiceDesignRouter.get('/voice-design/status', async (_req, res) => {
 
 voiceDesignRouter.post('/voice-design/batches', async (req, res) => {
   const snapshot = validate(req.body);
-  if (!snapshot) return res.status(400).json({ error: '声音设计配置不完整或无效', code: 'invalid_design' });
+  if (!snapshot) return fail(res, 400, '声音设计配置不完整或无效', 'invalid_design');
   const runtime = await runtimeStatus();
-  if (!runtime.supported) return res.status(503).json({ error: runtime.reachable ? '当前 Worker 尚未加载 VoiceDesign 接口，请重启 Worker 后重试。' : '本地 Worker 不可达，请启动 Worker 后重试。', code: 'voice_design_unavailable' });
+  if (!runtime.supported) return fail(res, 503, runtime.reachable ? '当前 Worker 尚未加载 VoiceDesign 接口，请重启 Worker 后重试。' : '本地 Worker 不可达，请启动 Worker 后重试。', 'voice_design_unavailable');
   // 幂等提交（doc #18）：同 key 同指纹 → 回放既有批次；同 key 异指纹 → 409。
   // 预检必须在 allocateBatch 之前，保证冲突路径不产生目录副作用。
   const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
@@ -168,11 +169,11 @@ voiceDesignRouter.post('/voice-design/batches', async (req, res) => {
     const existing = findByIdempotencyKey(idempotencyKey);
     if (existing) {
       if (existing.requestHash !== requestHash) {
-        return res.status(409).json({ error: '幂等键已绑定其他设计请求，请刷新后重试。', code: 'idempotency_key_conflict', existingJobId: existing.id });
+        return fail(res, 409, '幂等键已绑定其他设计请求，请刷新后重试。', 'idempotency_key_conflict', { existingJobId: existing.id });
       }
       const batch = await readBatch(existing.payload.externalId);
       if (batch) return res.status(202).json(publicBatch(batch));
-      return res.status(409).json({ error: '幂等键对应的批次记录已缺失，请更换幂等键后重试。', code: 'job_payload_missing' });
+      return fail(res, 409, '幂等键对应的批次记录已缺失，请更换幂等键后重试。', 'job_payload_missing');
     }
   }
   try {
@@ -183,31 +184,31 @@ voiceDesignRouter.post('/voice-design/batches', async (req, res) => {
       if (error instanceof IdempotencyConflictError) {
         // 并发双击竞态：回滚本次分配的目录，回放胜者
         await fs.rm(path.join(batchRoot(), batch.id), { recursive: true, force: true });
-        return res.status(409).json({ error: error.message, code: 'idempotency_key_conflict', existingJobId: error.existingJobId });
+        return fail(res, 409, error.message, 'idempotency_key_conflict', { existingJobId: error.existingJobId });
       }
       throw error;
     }
     return res.status(202).json(publicBatch(batch));
   } catch (error) {
-    return res.status(500).json({ error: error instanceof Error ? error.message : '批次创建失败', code: 'batch_create_failed' });
+    return fail(res, 500, error instanceof Error ? error.message : '批次创建失败', 'batch_create_failed');
   }
 });
 
 voiceDesignRouter.get('/voice-design/batches/:id', async (req, res) => {
   const batch = await readBatch(req.params.id);
-  if (!batch) return res.status(404).json({ error: '声音设计批次不存在', code: 'not_found' });
+  if (!batch) return fail(res, 404, '声音设计批次不存在', 'not_found');
   return res.json(publicBatch(batch));
 });
 
 voiceDesignRouter.get('/voice-design/batches/:id/review-candidates', async (req, res) => {
   const batch = await readBatch(req.params.id);
-  if (!batch) return res.status(404).json({ error: '声音设计批次不存在', code: 'not_found' });
-  if (batch.status !== 'completed') return res.status(409).json({ error: '候选尚未全部生成完成，不能进入匿名评审', code: 'batch_incomplete' });
+  if (!batch) return fail(res, 404, '声音设计批次不存在', 'not_found');
+  if (batch.status !== 'completed') return fail(res, 409, '候选尚未全部生成完成，不能进入匿名评审', 'batch_incomplete');
   const candidates = batch.candidates
     .filter(candidate => candidate.status === 'completed' && candidate.file)
     .map((candidate, index) => ({ id: candidate.reviewId || index + 1, duration: candidate.duration || 0, peaks: candidate.peaks || [] }));
   if (candidates.length !== batch.totalCount || new Set(candidates.map(candidate => candidate.id)).size !== candidates.length) {
-    return res.status(409).json({ error: '候选批次记录不完整，无法开始匿名评审', code: 'batch_candidates_incomplete' });
+    return fail(res, 409, '候选批次记录不完整，无法开始匿名评审', 'batch_candidates_incomplete');
   }
   return res.json({
     batch: { id: batch.id, label: batch.label, totalCount: batch.totalCount, language: batch.snapshot.language },
@@ -219,16 +220,16 @@ voiceDesignRouter.get('/voice-design/batches/:id/review-candidates', async (req,
 voiceDesignRouter.get('/voice-design/batches/:id/review-candidates/:reviewId/audio', async (req, res) => {
   const batch = await readBatch(req.params.id);
   const reviewId = Number(req.params.reviewId);
-  if (!batch || !Number.isInteger(reviewId) || reviewId < 1) return res.status(404).json({ error: '匿名候选不存在', code: 'not_found' });
+  if (!batch || !Number.isInteger(reviewId) || reviewId < 1) return fail(res, 404, '匿名候选不存在', 'not_found');
   const candidate = batch.candidates.find(item => (item.reviewId || 0) === reviewId && item.status === 'completed' && item.file);
-  if (!candidate?.file) return res.status(404).json({ error: '候选音频尚未生成', code: 'not_found' });
+  if (!candidate?.file) return fail(res, 404, '候选音频尚未生成', 'not_found');
   res.setHeader('Content-Type', 'audio/wav');
-  return res.sendFile(path.join(batchRoot(), batch.id, candidate.file));
+  return res.sendFile(resolveWithin(batchRoot(), batch.id, candidate.file)); // #25
 });
 
 voiceDesignRouter.get('/voice-design/batches/:id/candidates/:candidateId/audio', async (req, res) => {
   const batch = await readBatch(req.params.id);
   const candidate = batch?.candidates.find(item => item.id === req.params.candidateId && item.status === 'completed' && item.file);
-  if (!candidate?.file) return res.status(404).json({ error: '候选音频尚未生成', code: 'not_found' });
-  return res.sendFile(path.join(batchRoot(), batch!.id, candidate.file));
+  if (!candidate?.file) return fail(res, 404, '候选音频尚未生成', 'not_found');
+  return res.sendFile(resolveWithin(batchRoot(), batch!.id, candidate.file)); // #25
 });

@@ -54,6 +54,14 @@ describe('Jobs API', () => {
   });
 
   afterEach(async () => {
+    // 先等仍在执行的后台任务收敛（本文件会故意留下未轮询的批次）：
+    // 否则 rm 与执行器原子写（mkdir + tmp → rename）竞态，目录被复活导致 ENOTEMPTY
+    for (let index = 0; index < 250; index++) {
+      const list = await request(app).get('/api/jobs');
+      const busy = list.body.jobs.some((job: { status: string }) => ['queued', 'warming', 'running'].includes(job.status));
+      if (!busy) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
     vi.unstubAllGlobals();
     delete process.env.SEMOVIX_LIBRARY_DIR;
     await fs.rm(directory, { recursive: true, force: true });
@@ -77,6 +85,16 @@ describe('Jobs API', () => {
     throw new Error(`批次轮询超时：期望 ${status}`);
   }
 
+  /** 领域 JSON（batches/:id）先落、SQLite 终态后写（doc #14）——断言 Jobs API 前须等任务行到位 */
+  async function pollJob(jobId: string, status: string, attempts = 150) {
+    for (let index = 0; index < attempts; index++) {
+      const result = await request(app).get(`/api/jobs/${jobId}`);
+      if (result.status === 200 && result.body.job.status === status) return result.body.job;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    throw new Error(`任务轮询超时：期望 ${status}`);
+  }
+
   it('validates list query params and returns an empty list on a fresh library', async () => {
     expect((await request(app).get('/api/jobs')).body).toEqual({ jobs: [] });
     for (const query of ['type=bogus', 'status=bogus', 'limit=0', 'limit=abc', 'offset=-1']) {
@@ -97,6 +115,7 @@ describe('Jobs API', () => {
   it('exposes a completed design batch as a succeeded job without leaking idempotency fields', async () => {
     const batch = await createBatch();
     await pollBatch(batch.id, 'completed');
+    await pollJob(batch.jobId, 'succeeded');
 
     const list = await request(app).get('/api/jobs?type=voice-design');
     expect(list.status).toBe(200);
@@ -115,6 +134,7 @@ describe('Jobs API', () => {
   it('refuses to cancel a terminal job with 409 job_not_cancellable', async () => {
     const batch = await createBatch();
     await pollBatch(batch.id, 'completed');
+    await pollJob(batch.jobId, 'succeeded'); // SQLite 终态就位后才构成“终态任务不可取消”的前提
     const response = await request(app).post(`/api/jobs/${batch.jobId}/cancel`);
     expect(response.status).toBe(409);
     expect(response.body.code).toBe('job_not_cancellable');

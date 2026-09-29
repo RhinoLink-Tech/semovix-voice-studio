@@ -11,6 +11,7 @@ import { Router } from 'express';
 import { LOCAL_REASONING_ID, ollamaIsAvailable, ollamaModelName } from '../engines/reasoning';
 import { LOCAL_TRANSCRIBE_ID } from '../engines/asr';
 import { hasGeminiApiKey } from '../engines/geminiClient';
+import { WORKER_PROTOCOL_MIN } from '../db/versionsRegistry';
 import {
   getWorkerStatus,
   qwenVoiceCatalog,
@@ -59,6 +60,13 @@ function lifecycleFields(snap: WorkerEngineSnapshot) {
 
 voiceModelStatusRouter.get('/voice-model/status', async (_req, res) => {
   const [worker, ollamaUp] = await Promise.all([getWorkerStatus(), ollamaIsAvailable()]);
+  // P0-B #30：Worker 协议版本低于门槛时如实日志提示（不中断、不伪装兼容）
+  if (worker.reachable && worker.protocolVersion !== undefined && worker.protocolVersion < WORKER_PROTOCOL_MIN) {
+    console.warn(
+      `Worker 协议版本过低：worker=${worker.protocolVersion}，Node 侧最低 ${WORKER_PROTOCOL_MIN}；` +
+      '请同步升级 worker/ 目录（新特性语义不可用，基础合成不受影响）'
+    );
+  }
   // 引擎已 ready 时绕过目录缓存 TTL：冷启动→就绪的瞬间就能拿到官方音色（P01）
   const qwenCatalog = await qwenVoiceCatalog({ force: worker.qwen_tts.state === 'ready' });
 
@@ -122,6 +130,8 @@ voiceModelStatusRouter.get('/voice-model/status', async (_req, res) => {
   res.json({
     status: geminiReady ? 'connected' : 'local_fallback',
     configured: geminiReady,
+    // P0-B #30：Worker /health 自述的协议版本（旧 Worker 缺省为 null，如实）
+    workerProtocolVersion: worker.reachable ? (worker.protocolVersion ?? null) : null,
     engine: 'Google Gemini Audio Multimodal',
     models: {
       tts: 'gemini-2.5-flash-preview-tts',

@@ -1,0 +1,50 @@
+# P0-B #29 安装包配置（electron-builder）
+#
+# 布局契约（electron/main/index.ts 的 packaged 分支）：
+#   asar 内：electron/build/{main.cjs, preload/preload.cjs} + package.json（main 入口）
+#   Resources/app/（extraResources，真实磁盘）：dist/server.mjs、worker/、package.json、
+#   精简 node_modules —— ELECTRON_RUN_AS_NODE 与 Python 进程无法从 asar 内执行脚本。
+# 签名可选：证书环境变量存在时由 scripts/release.mjs 放行自动发现；
+# 缺失时 release.mjs 显式传 -c.mac.identity=null 并在更新清单标注 unsigned。
+appId: studio.semovix.voice
+productName: Semovix Voice Studio
+copyright: Copyright © 2026 Semovix
+
+directories:
+  output: release
+  buildResources: build
+
+# asar 只装 Electron 壳；服务端与 Worker 走 extraResources（见上）
+files:
+  - electron/build/**
+  - package.json
+
+extraResources:
+  # 分目录显式声明：electron-builder 对项目内来源的整目录拷贝默认过滤 node_modules，
+  # 服务端运行面必须完整落在真实磁盘上（ELECTRON_RUN_AS_NODE 无法读 asar）
+  - from: release/staging/app/dist
+    to: app/dist
+  - from: release/staging/app/worker
+    to: app/worker
+  - from: release/staging/app/package.json
+    to: app/package.json
+  - from: release/staging/app/node_modules
+    to: app/node_modules
+
+mac:
+  category: public.app-category.audio
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target: nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

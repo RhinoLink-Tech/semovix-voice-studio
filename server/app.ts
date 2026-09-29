@@ -19,6 +19,7 @@ import { voiceIdentitiesRouter } from './routes/voiceIdentities';
 import { voiceCloneRouter } from './routes/voiceClone';
 import { voiceAdditionalSourcesRouter } from './routes/voiceAdditionalSources';
 import { voiceSourceLifecycleRouter } from './routes/voiceSourceLifecycle';
+import { voiceProfilesRouter } from './routes/voiceProfiles';
 import { jobsRouter } from './routes/jobs';
 
 export function createApp(): express.Express {
@@ -42,7 +43,21 @@ export function createApp(): express.Express {
   app.use('/api', voiceCloneRouter);
   app.use('/api', voiceAdditionalSourcesRouter);
   app.use('/api', voiceSourceLifecycleRouter);
+  app.use('/api', voiceProfilesRouter);
   app.use('/api', jobsRouter);
+
+  // P0-B #24：全局错误中间件——路由内 re-throw 的意外异常一律 JSON 下发，
+  // 不再落回 Express 默认 HTML 500（破坏错误合同的路径已全部收口到这里）
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (res.headersSent) return; // 响应已开始下发（如 sendFile 中途失败）：交还默认机制
+    const err = error as { message?: string; code?: string; status?: number } | null;
+    const status = typeof err?.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
+    console.error('[api] unhandled route error:', error);
+    res.status(status).json({
+      error: err?.message || '服务器内部错误',
+      code: typeof err?.code === 'string' && err.code ? err.code : 'internal_error',
+    });
+  });
 
   return app;
 }

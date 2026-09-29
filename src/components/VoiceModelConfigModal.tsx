@@ -629,11 +629,13 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     {provider === 'gemini' && 'Gemini 官方音色人格'}
                     {provider === 'qwen3Tts' && 'Qwen3-TTS 官方音色目录'}
                     {provider === 'webSpeech' && '浏览器系统音色（仅实时预览）'}
+                    {provider === 'voiceProfile' && '已发布 Voice Profile（冻结版本）'}
                   </h3>
                   <p className="text-xs text-neutral-400">
                     {provider === 'gemini' && 'Google 多模态语音专属音色库，点击右侧按钮即时试听'}
                     {provider === 'qwen3Tts' && '目录来自 Worker 模型运行时（官方精确 ID），ID 不在目录内一律拒绝'}
                     {provider === 'webSpeech' && '调用系统 speechSynthesis，仅供预览，不会生成可保存素材'}
+                    {provider === 'voiceProfile' && '声音角色工作台发布冻结的 Profile；合成前服务端校验 Manifest 与参考音频 Hash'}
                   </p>
                 </div>
                 <div className="text-xs font-mono text-neutral-400 bg-neutral-950 px-2.5 py-1 rounded-lg border border-neutral-800">
@@ -684,12 +686,14 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                 <div className="text-center py-10 px-4 bg-neutral-950/60 border border-neutral-800 rounded-xl space-y-2">
                   <AlertCircle className="w-6 h-6 text-amber-400 mx-auto" />
                   <p className="text-xs text-neutral-300 font-semibold">
-                    {provider === 'qwen3Tts' ? 'Qwen 音色目录尚未就绪' : '音色目录不可用'}
+                    {provider === 'qwen3Tts' ? 'Qwen 音色目录尚未就绪' : provider === 'voiceProfile' ? '库中尚无已发布的 Voice Profile' : '音色目录不可用'}
                   </p>
                   <p className="text-[11px] text-neutral-500 leading-relaxed max-w-md mx-auto">
                     {provider === 'qwen3Tts'
                       ? '请先启动 worker/「启动Worker.command」（端口 8800）；引擎加载完成并就绪后，官方音色目录会自动出现。目录就绪前无法保存 Qwen 音色选择。'
-                      : catalog.error || '当前环境未提供可用音色。'}
+                      : provider === 'voiceProfile'
+                        ? (catalog.error || '请先在声音角色工作台完成验证与人工回听，发布冻结一个 Voice Profile 版本。')
+                        : catalog.error || '当前环境未提供可用音色。'}
                   </p>
                 </div>
               ) : (
@@ -753,7 +757,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                             {voice.desc}
                           </p>
 
-                          {provider === 'qwen3Tts' && (
+                          {(provider === 'qwen3Tts' || provider === 'voiceProfile') && (
                             <div className="text-[11px] font-mono text-cyan-300/80 bg-neutral-950/80 p-2 rounded-lg border border-neutral-800/80 break-all">
                               {voice.id}
                             </div>

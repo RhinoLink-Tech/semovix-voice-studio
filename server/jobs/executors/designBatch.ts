@@ -12,6 +12,7 @@ import { batchRoot, manifestPath, readBatch, writeBatch, type Batch, type Candid
 import { qwenWorkerVoiceDesign, waitForWorkerEngineReady } from '../../engines/qwenWorker';
 import { extractPcm16, wavDuration } from '../../audio/wav';
 import { createHash } from 'crypto';
+import { writeBinaryAtomic } from '../../lib/atomicFiles';
 
 const ACTIVE_DOMAIN_STATUSES = new Set(['queued', 'warming', 'running']);
 
@@ -36,7 +37,7 @@ async function execute(ctx: JobContext, ref: JobPayloadRef): Promise<void> {
     const language = batch.snapshot.language === '英文' ? 'English' : batch.snapshot.language === '中英双语' ? 'Auto' : 'Chinese';
     const wav = await qwenWorkerVoiceDesign({ text: batch.snapshot.reference, instruct, language, seed: candidate.seed, signal: ctx.signal });
     const filename = `${candidate.id}.wav`;
-    await fs.writeFile(path.join(batchRoot(), batch.id, filename), wav);
+    await writeBinaryAtomic(path.join(batchRoot(), batch.id, filename), wav); // #26
     candidate.file = filename;
     candidate.duration = wavDuration(wav);
     candidate.peaks = waveformPeaks(wav);

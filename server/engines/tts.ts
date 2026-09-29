@@ -11,6 +11,7 @@ import { applySpeedToWav } from '../audio/wsola';
 import { getGeminiClient, hasGeminiApiKey } from './geminiClient';
 import { EngineValidationError } from './errors';
 import { getWorkerStatus, qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady, type WorkerEngineCapabilities } from './qwenWorker';
+import { voiceProfileAdapter } from './voiceProfileTts';
 
 export interface TTSSynthesizeRequest {
   text: string;
@@ -29,6 +30,14 @@ export interface TTSSynthesizeResult {
   sampleRate: number;
   duration: number; // seconds
   voiceName: string;
+  /** P0-B #27/#28：Voice Profile 通路带出的溯源（普通引擎通路不带此字段） */
+  provenance?: {
+    voiceIdentityId: string;
+    voiceProfileVersion: string;
+    manifestHash: string;
+    /** 实际承担推理的 Worker 引擎（供 #28 捕获精确模型身份） */
+    workerEngine?: 'qwen_tts' | 'voice_clone';
+  };
 }
 
 export interface TTSEngineAdapter {
@@ -232,7 +241,7 @@ export const qwenLocalAdapter: TTSEngineAdapter = {
   },
 };
 
-export const ttsAdapters: TTSEngineAdapter[] = [geminiAdapter, qwenLocalAdapter];
+export const ttsAdapters: TTSEngineAdapter[] = [geminiAdapter, qwenLocalAdapter, voiceProfileAdapter];
 
 /* ---------- 模型白名单（硬性约束 #4：未知 ID 不得默认发给 Gemini） ---------- */
 
@@ -243,7 +252,7 @@ export const GEMINI_TTS_MODELS: readonly string[] = [
 ];
 
 /** 服务端可真正合成音频的模型 ID（web-speech-native 仅浏览器预览，由路由单独处理） */
-export const SUPPORTED_TTS_MODELS: readonly string[] = [...GEMINI_TTS_MODELS, qwenLocalAdapter.id];
+export const SUPPORTED_TTS_MODELS: readonly string[] = [...GEMINI_TTS_MODELS, qwenLocalAdapter.id, voiceProfileAdapter.id];
 
 export class UnsupportedTtsModelError extends EngineValidationError {
   constructor(readonly model: string) {
@@ -258,6 +267,8 @@ export class UnsupportedTtsModelError extends EngineValidationError {
 
 export function resolveTtsAdapter(ttsModel?: string): TTSEngineAdapter {
   if (ttsModel === qwenLocalAdapter.id) return qwenLocalAdapter;
+  // #27：已发布 Voice Profile 生产消费（voiceName 携带 profile:<id>@<version>）
+  if (ttsModel === voiceProfileAdapter.id) return voiceProfileAdapter;
   // 仅白名单内的 Gemini TTS 模型（或未指定时的默认值）走云端；未知 ID 一律拒绝
   if (!ttsModel || GEMINI_TTS_MODELS.includes(ttsModel)) return geminiAdapter;
   throw new UnsupportedTtsModelError(ttsModel);

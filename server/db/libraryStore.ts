@@ -9,7 +9,8 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { getConfig } from '../config';
-import { migrate } from './migrations';
+import { MIGRATIONS, migrate } from './migrations';
+import { getAppVersion, writeVersionsRegistry } from './versionsRegistry';
 
 export function libraryDirs(): { root: string; files: string; dbPath: string } {
   const root = getConfig().libraryDir;
@@ -20,7 +21,7 @@ let db: Database.Database | null = null;
 let openedDbPath: string | null = null;
 
 export function getDb(): Database.Database {
-  const { files, dbPath } = libraryDirs();
+  const { root, files, dbPath } = libraryDirs();
   // 测试、CLI 迁移和多工作区运行都会切换 SEMOVIX_LIBRARY_DIR。不能让旧目录的
   // SQLite 连接继续承接新请求，否则元数据会落入错误的声音资产库。
   if (db && openedDbPath === dbPath) return db;
@@ -29,7 +30,17 @@ export function getDb(): Database.Database {
   db = new Database(dbPath);
   openedDbPath = dbPath;
   db.pragma('journal_mode = WAL');
-  migrate(db);
+  try {
+    // P0-B #30：迁移带批次前备份 + 失败回滚；成功后登记 library/versions.json
+    migrate(db, { dbPath, backupDir: path.join(root, 'backups'), appVersion: getAppVersion() });
+    writeVersionsRegistry(root, MIGRATIONS[MIGRATIONS.length - 1]?.version ?? '0000');
+  } catch (error) {
+    // 迁移失败已把库恢复到批次前状态；migrate 在回滚路径已关闭连接，这里清空缓存后向上抛错
+    if (db.open) db.close();
+    db = null;
+    openedDbPath = null;
+    throw error;
+  }
   return db;
 }
 

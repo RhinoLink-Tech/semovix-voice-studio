@@ -81,7 +81,7 @@ soundRecipeRouter.post('/generate-sound-recipe', async (req, res) => {
     const { prompt, category = 'sci-fi', reasoningModel = 'gemini-2.5-flash' } = req.body;
 
     if (!prompt) {
-      return res.status(400).json({ error: 'Sound prompt is required.' });
+      return res.status(400).json({ error: 'Sound prompt is required.', code: 'invalid_request' });
     }
 
     const engine = await resolveReasoningEngine(reasoningModel);
@@ -183,6 +183,6 @@ Provide precise oscillator frequencies, envelopes, filter curves, and noise para
     res.json({ success: true, recipe, engine: 'gemini' });
   } catch (error: any) {
     console.error('SFX recipe error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate sound recipe.' });
+    res.status(500).json({ error: error.message || 'Failed to generate sound recipe.', code: 'internal_error' });
   }
 });

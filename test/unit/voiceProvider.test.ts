@@ -35,8 +35,15 @@ describe('providerForTtsModel', () => {
   it('maps TTS models to their voice provider', () => {
     expect(providerForTtsModel('qwen3-tts-local')).toBe('qwen3Tts');
     expect(providerForTtsModel('web-speech-native')).toBe('webSpeech');
+    expect(providerForTtsModel('voice-profile')).toBe('voiceProfile');
     expect(providerForTtsModel('gemini-2.5-flash-preview-tts')).toBe('gemini');
     expect(providerForTtsModel('gemini-2.5-pro-preview-tts')).toBe('gemini');
+  });
+
+  it('routes voiceProfile material provider to qwen (actual inference engine, P0-B #27)', () => {
+    // Profile 合成实际由本地 Qwen 引擎承担（Base 克隆 / CustomVoice 预置），
+    // 素材 metadata.providerId 记录推理引擎真相而非"虚拟 provider"
+    expect(providerIdForTtsModel('voice-profile')).toBe('qwen');
   });
 
   it('defaults unknown ids to gemini (server allowlist rejects them first)', () => {

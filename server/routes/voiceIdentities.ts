@@ -11,6 +11,7 @@ import {
   saveVoiceIdentitySourceConfig as saveStoredSourceConfig,
 } from '../db/voiceIdentityStore';
 import { fail } from './respond';
+import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
 
 export const voiceIdentitiesRouter = Router();
 
@@ -127,12 +128,6 @@ export async function markVoiceIdentityPublished(id: string, version: string): P
   return true;
 }
 
-async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temp = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n', 'utf8');
-  await fs.rename(temp, file);
-}
 
 async function writeIdentity(identity: Identity) {
   await writeJson(identityPath(identity.id), identity);

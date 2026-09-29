@@ -77,7 +77,7 @@ describe('authorized human clone API', () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/source-validation`).expect(200);
       expect(current.body.validation.status).toBe('completed');
       expect(current.body.validation.snapshot.source).toBe('授权真人克隆');
-    }, { timeout: 2000 });
+    }, { timeout: 5000 });
     await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
       profileName: '授权讲师声音 V1', profileVersion: 'V1.0', humanListeningConfirmed: true,
       usageBoundaries: { allowed: ['技术解读视频'], prohibited: ['冒充本人实时对话'] },

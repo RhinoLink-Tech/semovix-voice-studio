@@ -3,12 +3,15 @@
  * P2：模型白名单 + 统一错误结构；引擎不可用/未配置时如实失败，不再回退伪造。
  * P4：输出 WAV 落盘 artifacts 并返回 /api/artifacts/:id URL（硬性约束 #7：
  *     不再经 JSON Base64 回传大音频）；每次调用写入 generations 留痕（含失败）。
+ * P0-B #28：留痕行带完整溯源——输入/输出 SHA-256、引擎捕获的精确模型身份
+ *     （repo/revision/设备）；Voice Profile 通路的 identity/version/manifestHash 见 #27。
  */
+import crypto from 'crypto';
 import { Router } from 'express';
 import { resolveTtsAdapter } from '../engines/tts';
 import { hasGeminiApiKey } from '../engines/geminiClient';
 import { EngineValidationError, describeError } from '../engines/errors';
-import { WorkerNotReadyError } from '../engines/qwenWorker';
+import { captureModelIdentity, WorkerNotReadyError, type WorkerModelIdentity } from '../engines/qwenWorker';
 import { fail } from './respond';
 import { recordGeneration, writeArtifactFile } from '../db/generationsStore';
 
@@ -16,6 +19,13 @@ export const generateSpeechRouter = Router();
 
 function generationId(): string {
   return `tts-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** #28 溯源：本地 Worker 引擎捕获精确模型身份；云端引擎/Worker 不可达 → null（不伪造） */
+async function captureEngineIdentity(adapterId: string, workerEngine?: 'qwen_tts' | 'voice_clone'): Promise<WorkerModelIdentity | null> {
+  if (adapterId === 'qwen3-tts-local') return captureModelIdentity('qwen_tts');
+  if (adapterId === 'voice-profile') return workerEngine ? captureModelIdentity(workerEngine) : null;
+  return null;
 }
 
 generateSpeechRouter.post('/generate-speech', async (req, res) => {
@@ -62,6 +72,7 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
     // 引擎等待逻辑在 adapter.synthesize 内：cold/loading → 触发 warmup 并轮询；失败/超时抛 WorkerNotReadyError。
     const genId = generationId();
     const inputText = String(text).slice(0, 2000);
+    const inputTextHash = crypto.createHash('sha256').update(inputText).digest('hex'); // #28
 
     let result;
     try {
@@ -89,6 +100,7 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
       // 引擎调用失败：如实上报 502 + 留痕，不降级、不伪造音频（硬性约束 #1/#2）
       console.error(`TTS engine ${adapter.id} failed:`, e);
       const described = describeError(e);
+      const failedIdentity = await captureEngineIdentity(adapter.id);
       recordGeneration({
         id: genId,
         kind: 'tts',
@@ -99,13 +111,19 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
         input_text: inputText,
         status: 'failed',
         error: described.slice(0, 500),
+        input_text_sha256: inputTextHash,
+        model_repo: failedIdentity?.repoId ?? null,
+        model_revision: failedIdentity?.revision ?? null,
+        device: failedIdentity?.deviceType ?? null,
       });
       return fail(res, 502, described || 'TTS engine call failed.', 'tts_engine_failed', { engine: adapter.id, generationId: genId });
     }
 
     const wav = Buffer.from(result.wavBase64, 'base64');
-    const { size } = writeArtifactFile(genId, wav);
+    const { size, sha256 } = await writeArtifactFile(genId, wav);
 
+    // #28 溯源：合成成功后捕获引擎模型身份（一次 /health；不可达 → 各字段如实 null）
+    const identity = await captureEngineIdentity(adapter.id, result.provenance?.workerEngine);
     recordGeneration({
       id: genId,
       kind: 'tts',
@@ -118,6 +136,15 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
       duration_sec: result.duration,
       sample_rate: result.sampleRate,
       status: 'done',
+      input_text_sha256: inputTextHash,
+      output_sha256: sha256,
+      model_repo: identity?.repoId ?? null,
+      model_revision: identity?.revision ?? null,
+      device: identity?.deviceType ?? null,
+      // #27 Voice Profile 通路溯源
+      voice_identity_id: result.provenance?.voiceIdentityId ?? null,
+      voice_profile_version: result.provenance?.voiceProfileVersion ?? null,
+      manifest_hash: result.provenance?.manifestHash ?? null,
     });
 
     res.json({
@@ -129,6 +156,7 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
       format: 'wav',
       voiceName: result.voiceName,
       engine: adapter.id,
+      ...(result.provenance ? { provenance: result.provenance } : {}),
     });
   } catch (error: any) {
     console.error('Speech generation error:', error);

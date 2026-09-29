@@ -14,6 +14,10 @@ import { getVoiceIdentity, getVoiceIdentitySourceConfig, saveVoiceIdentitySource
 import { fail } from './respond';
 import { uploadSingle } from './upload';
 import { invalidateSourceValidation } from './voiceSourceLifecycle';
+import { ARCHIVE_LIMITS, safeArchivePath } from '../lib/safeFs';
+// #26 原子写公共工具；executor 仍从本模块 import 这些名字
+import { writeJsonAtomic as writeJson, writeBinaryAtomic as writeBinary } from '../lib/atomicFiles';
+export { writeJson, writeBinary };
 
 /**
  * Provider 预置音色与已有 Profile 导入共用的来源资产路由。
@@ -26,9 +30,10 @@ export const voiceAdditionalSourcesRouter = Router();
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const PROFILE_VERSION = /^V\d+\.\d+(?:\.\d+)?$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
-const MAX_UNPACKED_BYTES = 120 * 1024 * 1024;
-const MAX_ARCHIVE_FILES = 32;
+// #25 限额与 ZIP Slip 防御统一收编到 server/lib/safeFs.ts
+const MAX_IMPORT_BYTES = ARCHIVE_LIMITS.maxArchiveBytes;
+const MAX_UNPACKED_BYTES = ARCHIVE_LIMITS.maxUnpackedBytes;
+const MAX_ARCHIVE_FILES = ARCHIVE_LIMITS.maxEntryCount;
 export const PREVIEW_TEXT = '这是当前预置声音的统一试听文本，用于确认声音身份、清晰度和适用场景。';
 
 export type ProviderPreset = {
@@ -116,18 +121,6 @@ function safeId(res: Parameters<typeof fail>[0], id: string) {
 export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch (error: any) { if (error?.code === 'ENOENT') return null; throw error; }
-}
-async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  await fs.rename(temporary, file);
-}
-export async function writeBinary(file: string, content: Buffer) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, content);
-  await fs.rename(temporary, file);
 }
 export async function appendAudit(identityId: string, action: string, details: Record<string, unknown>) {
   await fs.mkdir(path.dirname(sourceAuditFile(identityId)), { recursive: true });
@@ -276,9 +269,6 @@ voiceAdditionalSourcesRouter.get('/voice-identities/:identityId/provider-presets
   }
 });
 
-function safeArchivePath(value: string) {
-  return value && !value.startsWith('/') && !value.includes('..') && !value.includes('\\') && value.split('/').every(part => /^[A-Za-z0-9._-]+$/.test(part));
-}
 async function loadImportedProfile(buffer: Buffer) {
   if (buffer.length > MAX_IMPORT_BYTES || buffer.subarray(0, 2).toString('ascii') !== 'PK') throw new Error('导入包必须是小于 50 MB 的合法 ZIP 文件。');
   const zip = await JSZip.loadAsync(buffer, { createFolders: false, checkCRC32: true });

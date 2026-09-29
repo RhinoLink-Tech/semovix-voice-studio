@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { Router } from 'express';
+import { fail } from './respond';
 import { getConfig } from '../config';
 import { submitJob } from '../jobs/runner';
 import { deleteJob, findByIdempotencyKey } from '../jobs/store';
@@ -9,6 +10,10 @@ import { IdempotencyConflictError } from '../jobs/errors';
 import '../jobs/executors/stabilityValidation';
 import { getVoiceIdentity, markVoiceIdentityPublished } from './voiceIdentities';
 import { captureModelIdentity, type WorkerModelIdentity } from '../engines/qwenWorker';
+import { resolveWithin } from '../lib/safeFs';
+import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
+// #27：已发布 Profile 的读取校验收拢为单一事实来源（路由层与引擎层共用）
+import { identityIdIsSafe, readVerifiedProfileManifest, versionIsSafe } from '../lib/profileManifest';
 
 export const voiceLifecycleRouter = Router();
 
@@ -91,9 +96,7 @@ export type ValidationRun = {
   completedAt?: string;
 };
 
-const identityIdIsSafe = (value: string) => /^[A-Za-z0-9_-]{1,120}$/.test(value);
 const batchIdIsSafe = (value: string) => /^\d{8}-\d{2,}$/.test(value);
-const versionIsSafe = (value: string) => /^V\d+\.\d+(?:\.\d+)?$/.test(value);
 export const batchDirectory = (batchId: string) => path.join(getConfig().libraryDir, 'voice-design-batches', batchId);
 const reviewPath = (batchId: string) => path.join(batchDirectory(batchId), 'review.json');
 const validationDecisionPath = (batchId: string) => path.join(batchDirectory(batchId), 'validation.json');
@@ -107,31 +110,6 @@ export async function readJson<T>(file: string): Promise<T | null> {
   catch { return null; }
 }
 
-async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  await fs.rename(temporary, file);
-}
-
-async function readVerifiedProfileManifest(identityId: string, version: string): Promise<{ manifest: Record<string, unknown>; directory: string } | null> {
-  if (!identityIdIsSafe(identityId) || !versionIsSafe(version)) return null;
-  const directory = profileDirectory(identityId, version);
-  try {
-    const [content, expected] = await Promise.all([
-      fs.readFile(path.join(directory, 'manifest.json')),
-      fs.readFile(path.join(directory, 'manifest.sha256'), 'utf8'),
-    ]);
-    const actualHash = crypto.createHash('sha256').update(content).digest('hex');
-    const expectedHash = expected.trim().split(/\s+/)[0];
-    if (!/^[a-f0-9]{64}$/.test(expectedHash) || expectedHash !== actualHash) throw new Error('manifest_hash_mismatch');
-    const manifest = JSON.parse(content.toString('utf8')) as Record<string, unknown>;
-    return { manifest, directory };
-  } catch (error: any) {
-    if (error?.code === 'ENOENT') return null;
-    throw error;
-  }
-}
 
 async function appendReleaseAudit(identityId: string, event: Record<string, unknown>) {
   await fs.appendFile(path.join(profileRoot(identityId), 'audit.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`, 'utf8');
@@ -190,37 +168,37 @@ export async function writeValidationRun(run: ValidationRun) {
 
 voiceLifecycleRouter.get('/voice-design/batches/:batchId/review', async (req, res) => {
   const batch = await getBatch(req.params.batchId);
-  if (!batch) return res.status(404).json({ error: '声音设计批次不存在', code: 'not_found' });
+  if (!batch) return fail(res, 404, '声音设计批次不存在', 'not_found');
   return res.json({ review: await readJson<ReviewRecord>(reviewPath(req.params.batchId)) });
 });
 
 voiceLifecycleRouter.put('/voice-design/batches/:batchId/review', async (req, res) => {
   const batch = await getBatch(req.params.batchId);
   const identityId = typeof req.body?.identityId === 'string' ? req.body.identityId : '';
-  if (!batch || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId) return res.status(404).json({ error: '声音设计批次不存在或不属于当前声音角色', code: 'not_found' });
-  if (batch.status !== 'completed') return res.status(409).json({ error: '候选尚未全部生成完成，不能开始匿名评审', code: 'batch_incomplete' });
+  if (!batch || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId) return fail(res, 404, '声音设计批次不存在或不属于当前声音角色', 'not_found');
+  if (batch.status !== 'completed') return fail(res, 409, '候选尚未全部生成完成，不能开始匿名评审', 'batch_incomplete');
   const review = reviewFrom(req.body, identityId, req.params.batchId);
-  if (!review) return res.status(400).json({ error: '匿名评审记录不完整或包含不可入围候选', code: 'invalid_review' });
+  if (!review) return fail(res, 400, '匿名评审记录不完整或包含不可入围候选', 'invalid_review');
   const candidateCount = batch.totalCount;
-  if (!Number.isInteger(candidateCount) || candidateCount < 1 || review.finalists.some(candidateId => candidateId > candidateCount) || review.eliminated.some(candidateId => candidateId > candidateCount) || Array.from({ length: candidateCount }, (_, index) => index + 1).some(candidateId => !review.scores[String(candidateId)])) return res.status(400).json({ error: '候选编号无效或仍有候选未完成评分', code: 'invalid_candidate' });
+  if (!Number.isInteger(candidateCount) || candidateCount < 1 || review.finalists.some(candidateId => candidateId > candidateCount) || review.eliminated.some(candidateId => candidateId > candidateCount) || Array.from({ length: candidateCount }, (_, index) => index + 1).some(candidateId => !review.scores[String(candidateId)])) return fail(res, 400, '候选编号无效或仍有候选未完成评分', 'invalid_candidate');
   await writeJson(reviewPath(req.params.batchId), review);
   return res.json({ review });
 });
 
 voiceLifecycleRouter.get('/voice-design/batches/:batchId/validation-run', async (req, res) => {
-  if (!batchIdIsSafe(req.params.batchId)) return res.status(404).json({ error: '验证任务不存在', code: 'not_found' });
+  if (!batchIdIsSafe(req.params.batchId)) return fail(res, 404, '验证任务不存在', 'not_found');
   const run = await readJson<ValidationRun>(validationRunPath(req.params.batchId));
   if (!run) return res.json({ validationRun: null });
   return res.json({ validationRun: publicValidationRun(run) });
 });
 
 voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async (req, res) => {
-  if (!batchIdIsSafe(req.params.batchId)) return res.status(404).json({ error: '验证任务不存在', code: 'not_found' });
+  if (!batchIdIsSafe(req.params.batchId)) return fail(res, 404, '验证任务不存在', 'not_found');
   const batch = await getBatch(req.params.batchId);
   const identityId = typeof req.body?.identityId === 'string' ? req.body.identityId : '';
   const review = await readJson<ReviewRecord>(reviewPath(req.params.batchId));
-  if (!batch || !review || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId || review.identityId !== identityId) return res.status(409).json({ error: '请先完成匿名评审，再开始稳定性验证', code: 'lifecycle_incomplete' });
-  if (batch.status !== 'completed') return res.status(409).json({ error: '候选尚未全部生成完成', code: 'batch_incomplete' });
+  if (!batch || !review || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId || review.identityId !== identityId) return fail(res, 409, '请先完成匿名评审，再开始稳定性验证', 'lifecycle_incomplete');
+  if (batch.status !== 'completed') return fail(res, 409, '候选尚未全部生成完成', 'batch_incomplete');
   // 幂等提交（doc #18）：同 key 同指纹 → 回放既有验证任务；同 key 异指纹 → 409。
   const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
   const requestHash = crypto.createHash('sha256').update(JSON.stringify({ identityId, batchId: batch.id })).digest('hex');
@@ -228,17 +206,17 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
     const existingJob = findByIdempotencyKey(idempotencyKey);
     if (existingJob) {
       if (existingJob.requestHash !== requestHash) {
-        return res.status(409).json({ error: '幂等键已绑定其他验证请求，请刷新后重试。', code: 'idempotency_key_conflict', existingJobId: existingJob.id });
+        return fail(res, 409, '幂等键已绑定其他验证请求，请刷新后重试。', 'idempotency_key_conflict', { existingJobId: existingJob.id });
       }
       const run = await readJson<ValidationRun>(validationRunPath(batch.id));
       if (run) return res.status(202).json({ validationRun: publicValidationRun(run) });
-      return res.status(409).json({ error: '幂等键对应的验证任务记录已缺失，请更换幂等键后重试。', code: 'job_payload_missing' });
+      return fail(res, 409, '幂等键对应的验证任务记录已缺失，请更换幂等键后重试。', 'job_payload_missing');
     }
   }
   const existing = await readJson<ValidationRun>(validationRunPath(batch.id));
   if (existing && existing.status !== 'cancelled') {
     // 进行中（queued/warming/running）与 completed/failed 不可覆盖 → 原有语义保留
-    return res.status(409).json({ error: '当前批次已有不可覆盖的验证任务；请创建新的声音设计批次后重新验证。', code: 'validation_exists', validationRun: publicValidationRun(existing) });
+    return fail(res, 409, '当前批次已有不可覆盖的验证任务；请创建新的声音设计批次后重新验证。', 'validation_exists', { validationRun: publicValidationRun(existing) });
   }
   if (existing) {
     // cancelled → 允许重建：清空旧证据目录与旧任务行后全新提交（cancelled 终态已释放幂等键）
@@ -248,9 +226,9 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
   const candidates: CandidateValidation[] = [];
   for (const reviewId of review.finalists) {
     const source = batch.candidates?.find(candidate => candidate.reviewId === reviewId && candidate.status === 'completed' && candidate.file && candidate.sha256);
-    if (!source?.file || !source.sha256) return res.status(409).json({ error: `候选 #${String(reviewId).padStart(3, '0')} 缺少可验证的参考音频`, code: 'reference_audio_missing' });
+    if (!source?.file || !source.sha256) return fail(res, 409, `候选 #${String(reviewId).padStart(3, '0')} 缺少可验证的参考音频`, 'reference_audio_missing');
     try { await fs.access(path.join(batchDirectory(batch.id), source.file)); }
-    catch { return res.status(409).json({ error: `候选 #${String(reviewId).padStart(3, '0')} 的参考音频文件不存在`, code: 'reference_audio_missing' }); }
+    catch { return fail(res, 409, `候选 #${String(reviewId).padStart(3, '0')} 的参考音频文件不存在`, 'reference_audio_missing'); }
     candidates.push({ candidateId: reviewId, sourceCandidateId: source.id, sourceAudio: { file: source.file, sha256: source.sha256, duration: source.duration ?? null }, tasks: [], repeats: [], status: 'pending', attentionCount: 0 });
   }
   const now = new Date().toISOString();
@@ -261,7 +239,7 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
     submitJob({ kind: 'stability-validation', externalId: batch.id, payloadPath: validationRunPath(batch.id), identityId, total: run.totalOutputs, idempotencyKey, requestHash });
   } catch (error) {
     if (error instanceof IdempotencyConflictError) {
-      return res.status(409).json({ error: error.message, code: 'idempotency_key_conflict', existingJobId: error.existingJobId });
+      return fail(res, 409, error.message, 'idempotency_key_conflict', { existingJobId: error.existingJobId });
     }
     throw error;
   }
@@ -270,14 +248,14 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
 
 voiceLifecycleRouter.get('/voice-design/batches/:batchId/validation-run/audio/:candidateId/:evidenceId', async (req, res) => {
   const candidateId = Number(req.params.candidateId);
-  if (!batchIdIsSafe(req.params.batchId) || !Number.isInteger(candidateId) || candidateId < 1 || !/^[a-z0-9-]{3,80}$/i.test(req.params.evidenceId)) return res.status(404).json({ error: '测试音频不存在', code: 'not_found' });
+  if (!batchIdIsSafe(req.params.batchId) || !Number.isInteger(candidateId) || candidateId < 1 || !/^[a-z0-9-]{3,80}$/i.test(req.params.evidenceId)) return fail(res, 404, '测试音频不存在', 'not_found');
   const run = await readJson<ValidationRun>(validationRunPath(req.params.batchId));
   const candidate = run?.candidates.find(item => item.candidateId === candidateId);
   const evidence = candidate && [...candidate.tasks, ...candidate.repeats].find(item => item.id === req.params.evidenceId);
-  if (!run || !candidate || !evidence) return res.status(404).json({ error: '测试音频不存在', code: 'not_found' });
-  const audioFile = path.join(validationOutputDirectory(req.params.batchId), evidence.file);
+  if (!run || !candidate || !evidence) return fail(res, 404, '测试音频不存在', 'not_found');
+  const audioFile = resolveWithin(validationOutputDirectory(req.params.batchId), evidence.file); // #25
   try { await fs.access(audioFile); }
-  catch { return res.status(404).json({ error: '测试音频文件不存在', code: 'not_found' }); }
+  catch { return fail(res, 404, '测试音频文件不存在', 'not_found'); }
   res.setHeader('Content-Type', 'audio/wav');
   return res.sendFile(audioFile);
 });
@@ -291,10 +269,10 @@ voiceLifecycleRouter.put('/voice-design/batches/:batchId/validation', async (req
   const humanListeningConfirmed = req.body?.humanListeningConfirmed === true;
   const review = await readJson<ReviewRecord>(reviewPath(req.params.batchId));
   const run = await readJson<ValidationRun>(validationRunPath(req.params.batchId));
-  if (!batch || !review || !run || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId) return res.status(404).json({ error: '未找到可验证的声音设计批次', code: 'not_found' });
+  if (!batch || !review || !run || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId) return fail(res, 404, '未找到可验证的声音设计批次', 'not_found');
   const candidate = run.candidates.find(item => item.candidateId === candidateId);
-  if (!Number.isInteger(candidateId) || !review.finalists.includes(candidateId) || !profileName || !versionIsSafe(profileVersion) || !humanListeningConfirmed) return res.status(400).json({ error: '验证结果、人工回听确认或拟发布候选无效', code: 'invalid_validation' });
-  if (run.status !== 'completed' || candidate?.status !== 'passed') return res.status(409).json({ error: '当前候选尚未通过完整稳定性验证，不能保存发布决策', code: 'validation_incomplete' });
+  if (!Number.isInteger(candidateId) || !review.finalists.includes(candidateId) || !profileName || !versionIsSafe(profileVersion) || !humanListeningConfirmed) return fail(res, 400, '验证结果、人工回听确认或拟发布候选无效', 'invalid_validation');
+  if (run.status !== 'completed' || candidate?.status !== 'passed') return fail(res, 409, '当前候选尚未通过完整稳定性验证，不能保存发布决策', 'validation_incomplete');
   const validation: ValidationDecision = { identityId, batchId: req.params.batchId, candidateId, profileName, profileVersion, humanListeningConfirmed, savedAt: new Date().toISOString() };
   await writeJson(validationDecisionPath(req.params.batchId), validation);
   return res.json({ validation });
@@ -308,27 +286,27 @@ voiceLifecycleRouter.post('/voice-identities/:identityId/voice-profiles', async 
   const validationRun = await readJson<ValidationRun>(validationRunPath(batchId));
   const review = await readJson<ReviewRecord>(reviewPath(batchId));
   const identity = identityIdIsSafe(identityId) ? await getVoiceIdentity(identityId) : null;
-  if (!identity) return res.status(404).json({ error: '声音角色不存在，不能冻结 Voice Profile', code: 'identity_not_found' });
-  if (!batch || !validation || !validationRun || !review || batch.snapshot.identityId !== identityId || validation.identityId !== identityId) return res.status(409).json({ error: '请先完成匿名评审、稳定性验证与人工回听确认', code: 'lifecycle_incomplete' });
+  if (!identity) return fail(res, 404, '声音角色不存在，不能冻结 Voice Profile', 'identity_not_found');
+  if (!batch || !validation || !validationRun || !review || batch.snapshot.identityId !== identityId || validation.identityId !== identityId) return fail(res, 409, '请先完成匿名评审、稳定性验证与人工回听确认', 'lifecycle_incomplete');
   const candidateId = Number(req.body?.candidateId);
   const validatedCandidate = validationRun.candidates.find(candidate => candidate.candidateId === candidateId);
-  if (!Number.isInteger(candidateId) || candidateId !== validation.candidateId || !review.finalists.includes(candidateId) || validationRun.status !== 'completed' || validatedCandidate?.status !== 'passed' || !validation.humanListeningConfirmed) return res.status(400).json({ error: '拟发布候选未通过验证或未完成人工回听确认', code: 'invalid_candidate' });
+  if (!Number.isInteger(candidateId) || candidateId !== validation.candidateId || !review.finalists.includes(candidateId) || validationRun.status !== 'completed' || validatedCandidate?.status !== 'passed' || !validation.humanListeningConfirmed) return fail(res, 400, '拟发布候选未通过验证或未完成人工回听确认', 'invalid_candidate');
   const profileName = typeof req.body?.profileName === 'string' ? req.body.profileName.trim() : '';
   const version = typeof req.body?.profileVersion === 'string' ? req.body.profileVersion.trim() : '';
-  if (!profileName || !versionIsSafe(version)) return res.status(400).json({ error: 'Profile 名称或版本号无效', code: 'invalid_profile' });
+  if (!profileName || !versionIsSafe(version)) return fail(res, 400, 'Profile 名称或版本号无效', 'invalid_profile');
   const referenceCandidate = batch.candidates?.find(candidate => candidate.reviewId === candidateId && candidate.status === 'completed' && candidate.file);
-  if (!referenceCandidate?.file || !referenceCandidate.sha256) return res.status(409).json({ error: '拟发布候选缺少可归档的参考音频，无法冻结版本', code: 'reference_audio_missing' });
-  const sourceAudio = path.join(batchDirectory(batchId), referenceCandidate.file);
+  if (!referenceCandidate?.file || !referenceCandidate.sha256) return fail(res, 409, '拟发布候选缺少可归档的参考音频，无法冻结版本', 'reference_audio_missing');
+  const sourceAudio = resolveWithin(batchDirectory(batchId), referenceCandidate.file); // #25
   try { await fs.access(sourceAudio); }
-  catch { return res.status(409).json({ error: '拟发布候选的参考音频文件不存在', code: 'reference_audio_missing' }); }
+  catch { return fail(res, 409, '拟发布候选的参考音频文件不存在', 'reference_audio_missing'); }
   const sourceAudioHash = crypto.createHash('sha256').update(await fs.readFile(sourceAudio)).digest('hex');
   if (sourceAudioHash !== referenceCandidate.sha256) {
-    return res.status(409).json({ error: '拟发布候选的参考音频 Hash 校验失败，不能冻结版本', code: 'reference_audio_integrity_failed' });
+    return fail(res, 409, '拟发布候选的参考音频 Hash 校验失败，不能冻结版本', 'reference_audio_integrity_failed');
   }
   const parent = profileRoot(identityId);
   const directory = profileDirectory(identityId, version);
   try { await fs.mkdir(parent, { recursive: true }); await fs.mkdir(directory); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return res.status(409).json({ error: `Voice Profile ${version} 已存在，不能覆盖已冻结版本`, code: 'version_exists' }); throw error; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return fail(res, 409, `Voice Profile ${version} 已存在，不能覆盖已冻结版本`, 'version_exists'); throw error; }
   const validationReport = await fs.readFile(validationRunPath(batchId));
   const validationReportHash = crypto.createHash('sha256').update(validationReport).digest('hex');
   const manifest = {
@@ -368,7 +346,7 @@ voiceLifecycleRouter.post('/voice-identities/:identityId/voice-profiles', async 
 
 voiceLifecycleRouter.get('/voice-identities/:identityId/voice-profiles', async (req, res) => {
   const identityId = req.params.identityId;
-  if (!identityIdIsSafe(identityId) || !await getVoiceIdentity(identityId)) return res.status(404).json({ error: '声音角色不存在', code: 'identity_not_found' });
+  if (!identityIdIsSafe(identityId) || !await getVoiceIdentity(identityId)) return fail(res, 404, '声音角色不存在', 'identity_not_found');
   try {
     const entries = await fs.readdir(profileRoot(identityId), { withFileTypes: true });
     const versions = entries.filter(entry => entry.isDirectory() && versionIsSafe(entry.name)).map(entry => entry.name);
@@ -381,24 +359,24 @@ voiceLifecycleRouter.get('/voice-identities/:identityId/voice-profiles', async (
           profileName: String(profile.manifest.profileName || ''),
           status: 'published',
           frozenAt: String(profile.manifest.frozenAt || ''),
-          manifestHash: crypto.createHash('sha256').update(await fs.readFile(path.join(profile.directory, 'manifest.json'))).digest('hex'),
+          manifestHash: profile.manifestHash,
         };
       } catch { return null; }
     }))).filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
     return res.json({ profiles: profiles.sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true })) });
   } catch (error: any) {
     if (error?.code === 'ENOENT') return res.json({ profiles: [] });
-    return res.status(500).json({ error: error?.message || '读取 Voice Profile 失败', code: 'profile_list_failed' });
+    return fail(res, 500, error?.message || '读取 Voice Profile 失败', 'profile_list_failed');
   }
 });
 
 voiceLifecycleRouter.get('/voice-identities/:identityId/voice-profiles/:version/manifest', async (req, res) => {
   try {
     const profile = await readVerifiedProfileManifest(req.params.identityId, req.params.version);
-    if (!profile) return res.status(404).json({ error: 'Voice Profile 不存在', code: 'not_found' });
+    if (!profile) return fail(res, 404, 'Voice Profile 不存在', 'not_found');
     return res.json({ manifest: profile.manifest });
   } catch {
-    return res.status(409).json({ error: 'Voice Profile Manifest 校验失败', code: 'artifact_integrity_failed' });
+    return fail(res, 409, 'Voice Profile Manifest 校验失败', 'artifact_integrity_failed');
   }
 });
 
@@ -406,12 +384,12 @@ voiceLifecycleRouter.get('/voice-identities/:identityId/voice-profiles/:version/
   try {
     const profile = await readVerifiedProfileManifest(req.params.identityId, req.params.version);
     const audio = profile?.manifest.referenceAudio as { file?: unknown; sha256?: unknown } | undefined;
-    if (!profile || audio?.file !== 'reference.wav' || typeof audio.sha256 !== 'string') return res.status(404).json({ error: 'Voice Profile 参考音频不存在', code: 'not_found' });
-    const content = await fs.readFile(path.join(profile.directory, audio.file));
-    if (crypto.createHash('sha256').update(content).digest('hex') !== audio.sha256) return res.status(409).json({ error: 'Voice Profile 参考音频 Hash 校验失败', code: 'artifact_integrity_failed' });
+    if (!profile || audio?.file !== 'reference.wav' || typeof audio.sha256 !== 'string') return fail(res, 404, 'Voice Profile 参考音频不存在', 'not_found');
+    const content = await fs.readFile(resolveWithin(profile.directory, String(audio.file))); // #25
+    if (crypto.createHash('sha256').update(content).digest('hex') !== audio.sha256) return fail(res, 409, 'Voice Profile 参考音频 Hash 校验失败', 'artifact_integrity_failed');
     res.setHeader('Content-Type', 'audio/wav');
     return res.send(content);
   } catch {
-    return res.status(409).json({ error: 'Voice Profile 产物校验失败', code: 'artifact_integrity_failed' });
+    return fail(res, 409, 'Voice Profile 产物校验失败', 'artifact_integrity_failed');
   }
 });

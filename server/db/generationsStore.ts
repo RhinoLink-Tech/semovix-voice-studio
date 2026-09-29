@@ -2,10 +2,13 @@
  * generations 生成记录持久化（可追溯性地基，迁移 0002）
  * 成功与失败的引擎调用都留痕；失败行不带输出文件但有 error 描述。
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { getConfig } from '../config';
 import { getDb } from './libraryStore';
+import { resolveWithin } from '../lib/safeFs';
+import { writeBinaryAtomic } from '../lib/atomicFiles';
 
 export interface GenerationRecord {
   id: string;
@@ -22,6 +25,16 @@ export interface GenerationRecord {
   status: 'done' | 'failed';
   error?: string | null;
   created_at?: string;
+  /** P0-B #28 溯源字段：未知/不适用时如实留空 */
+  voice_identity_id?: string | null;
+  voice_profile_version?: string | null;
+  manifest_hash?: string | null;
+  model_repo?: string | null;
+  model_revision?: string | null;
+  seed?: number | null;
+  device?: string | null;
+  input_text_sha256?: string | null;
+  output_sha256?: string | null;
 }
 
 export function artifactsDir(): string {
@@ -30,16 +43,16 @@ export function artifactsDir(): string {
   return dir;
 }
 
-/** 写生成输出音频文件（artifacts/<id>.wav），返回文件名 */
-export function writeArtifactFile(id: string, data: Buffer): { fileName: string; size: number } {
+/** 写生成输出音频文件（artifacts/<id>.wav）：原子写 + 输出内容 sha256（#26/#28） */
+export async function writeArtifactFile(id: string, data: Buffer): Promise<{ fileName: string; size: number; sha256: string }> {
   const fileName = `${id}.wav`;
-  fs.writeFileSync(path.join(artifactsDir(), fileName), data);
-  return { fileName, size: data.length };
+  await writeBinaryAtomic(resolveWithin(artifactsDir(), fileName), data); // #25 路径包含校验 + #26 原子写
+  return { fileName, size: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex') };
 }
 
 export function readArtifactFile(id: string): { filePath: string } | null {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return null;
-  const filePath = path.join(artifactsDir(), `${id}.wav`);
+  const filePath = resolveWithin(artifactsDir(), `${id}.wav`); // #25 路径包含校验
   if (!fs.existsSync(filePath)) return null;
   return { filePath };
 }
@@ -52,9 +65,15 @@ const rowToRecord = (row: any): GenerationRecord & { params?: Record<string, unk
 export function recordGeneration(rec: GenerationRecord): void {
   getDb().prepare(`
     INSERT INTO generations (id, kind, engine, model, voice, params, input_text, item_id,
-                             output_file, duration_sec, sample_rate, status, error, created_at)
+                             output_file, duration_sec, sample_rate, status, error, created_at,
+                             voice_identity_id, voice_profile_version, manifest_hash,
+                             model_repo, model_revision, seed, device,
+                             input_text_sha256, output_sha256)
     VALUES (@id, @kind, @engine, @model, @voice, @params, @input_text, @item_id,
-            @output_file, @duration_sec, @sample_rate, @status, @error, @created_at)
+            @output_file, @duration_sec, @sample_rate, @status, @error, @created_at,
+            @voice_identity_id, @voice_profile_version, @manifest_hash,
+            @model_repo, @model_revision, @seed, @device,
+            @input_text_sha256, @output_sha256)
   `).run({
     id: rec.id,
     kind: rec.kind,
@@ -70,6 +89,15 @@ export function recordGeneration(rec: GenerationRecord): void {
     status: rec.status,
     error: rec.error ?? null,
     created_at: rec.created_at ?? new Date().toISOString(),
+    voice_identity_id: rec.voice_identity_id ?? null,
+    voice_profile_version: rec.voice_profile_version ?? null,
+    manifest_hash: rec.manifest_hash ?? null,
+    model_repo: rec.model_repo ?? null,
+    model_revision: rec.model_revision ?? null,
+    seed: rec.seed ?? null,
+    device: rec.device ?? null,
+    input_text_sha256: rec.input_text_sha256 ?? null,
+    output_sha256: rec.output_sha256 ?? null,
   });
 }
 
