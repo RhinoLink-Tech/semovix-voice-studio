@@ -5,7 +5,15 @@ import { isDesktopMode, pickFile, saveFromUrl } from '../desktop/fileDialogs';
 import './VoiceIdentityAdditionalSources.css';
 
 type Identity = { name: string; ownerName: string; language: string; source: string; status: string };
-type ImportedProfile = { id: string; originalName: string; packageSha256: string; profileName: string; version: string; sourceType: string; language: string; manifestSha256: string; referenceSha256: string; referenceDuration: number; referenceSampleRate: number; importedAt: string };
+type ImportedProfile = { id: string; originalName: string; packageSha256: string; profileName: string; version: string; sourceType: string; language: string; manifestSha256: string; referenceSha256: string; referenceDuration: number; referenceSampleRate: number; importedAt: string; license?: { kind: string; spdxIdentifier: string | null; carriedFrom: string | null; redistributionAllowed: boolean } | null };
+
+/** 许可类别的人可读名（license.json 的 kind 原值兜底） */
+const LICENSE_KIND_LABEL: Record<string, string> = {
+  'ai-original': 'AI 原创',
+  'consent-based': '本人授权',
+  'provider-terms': 'Provider 条款',
+  imported: '导入透传',
+};
 
 function compactHash(value: string) { return value ? `${value.slice(0, 10)}…${value.slice(-8)}` : '—'; }
 
@@ -74,6 +82,7 @@ export function VoiceIdentityImportedProfileView({ id, onCenter, onValidation }:
         <section className="vas-panel"><div className="vas-panel-head"><div><h2>导入包兼容性</h2><p>这些结论来自已归档的文件和 Manifest，不依赖浏览器中的临时状态。</p></div><span className={profile ? 'vas-ready' : 'vas-pending'}>{profile ? '已校验' : '待导入'}</span></div><div className="vas-checklist"><div><span><Check size={13} />Manifest 格式</span><b>{profile ? '已归档' : '待校验'}</b></div><div><span><Check size={13} />参考音频 Hash</span><b>{profile ? '已匹配' : '待校验'}</b></div><div><span><Check size={13} />WAV 格式</span><b>{profile ? 'Mono · PCM 16-bit' : '待校验'}</b></div><div><span><Check size={13} />来源记录</span><b>{profile ? '已保存' : '待校验'}</b></div></div><p className="vas-field-note"><CircleHelp size={13} />未通过任何一项校验的导入包不会写入声音角色目录。</p></section>
       </div><aside className="vas-right">
         <section className="vas-panel"><div className="vas-panel-head"><div><h2>已导入 Profile</h2><p>导入记录绑定当前声音角色。</p></div></div>{profile ? <dl className="vas-details"><div><dt>Profile 名称</dt><dd>{profile.profileName}</dd></div><div><dt>版本</dt><dd>{profile.version}</dd></div><div><dt>原始来源</dt><dd>{profile.sourceType}</dd></div><div><dt>主要语言</dt><dd>{profile.language}</dd></div><div><dt>导入包</dt><dd>{profile.originalName}</dd></div><div><dt>归档时间</dt><dd>{new Date(profile.importedAt).toLocaleString('zh-CN')}</dd></div></dl> : <div className="vas-empty-preview"><FileArchive size={18} />尚未归档任何 Voice Profile。</div>}</section>
+        {profile?.license && <section className="vas-panel"><div className="vas-panel-head"><div><h2>许可元数据</h2><p>来自导入包 license.json，随包归档。</p></div><ShieldCheck size={17} /></div><dl className="vas-details"><div><dt>许可类别</dt><dd>{LICENSE_KIND_LABEL[profile.license.kind] ?? profile.license.kind}</dd></div><div><dt>SPDX 标识</dt><dd>{profile.license.spdxIdentifier || profile.license.carriedFrom || '无（未声明 SPDX）'}</dd></div><div><dt>可再分发</dt><dd>{profile.license.redistributionAllowed ? '允许' : '禁止'}</dd></div></dl></section>}
         <section className="vas-panel"><div className="vas-panel-head"><div><h2>完整性证据</h2><p>每次读取参考音频前都会重新核对归档 Hash。</p></div><ShieldCheck size={17} /></div><dl className="vas-hashes"><div><dt>Package SHA-256</dt><dd>{compactHash(profile?.packageSha256 || '')}</dd></div><div><dt>Manifest SHA-256</dt><dd>{compactHash(profile?.manifestSha256 || '')}</dd></div><div><dt>Reference SHA-256</dt><dd>{compactHash(profile?.referenceSha256 || '')}</dd></div></dl></section>
         <section className="vas-panel vas-preview"><div className="vas-panel-head"><div><h2>参考音频</h2><p>来自已通过 Hash 校验的导入 Profile。</p></div><span className={profile ? 'vas-ready' : 'vas-pending'}>{profile ? '可试听' : '尚未导入'}</span></div>{audioUrl ? <><audio ref={audio} src={audioUrl} onEnded={() => setIsPlaying(false)} /><div className="vas-audio-row"><button type="button" className="vas-play" onClick={() => void togglePlayback()}>{isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</button><span>{profile?.referenceDuration.toFixed(1)} 秒 · WAV · {profile?.referenceSampleRate} Hz</span></div><a href={audioUrl} download={`imported-profile-${profile?.version}.wav`} onClick={event => { event.preventDefault(); downloadReference(); }}><Download size={13} />下载已校验音频</a></> : <div className="vas-empty-preview"><AudioLines size={18} />导入完成后可试听参考音频。</div>}</section>
       </aside></div>

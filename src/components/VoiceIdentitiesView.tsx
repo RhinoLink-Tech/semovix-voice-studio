@@ -6,6 +6,7 @@ import {
   X, Maximize2, FileText, Layers3, Sparkles,
 } from 'lucide-react';
 import './VoiceIdentitiesView.css';
+import { saveFromUrl } from '../desktop/fileDialogs';
 
 type VoiceStatus = '已发布' | '评审中' | '草稿' | '已退役';
 type VoiceSource = 'AI 原创设计' | '授权真人克隆' | '预置音色' | 'Provider 预置音色' | '导入已有 Voice Profile';
@@ -89,6 +90,8 @@ export function VoiceIdentitiesView({ globalSearch = '', onUseForGeneration, onC
   const [preview, setPreview] = useState<VoiceIdentity | null>(INITIAL_IDENTITIES[0]);
   const [detail, setDetail] = useState<VoiceIdentity | null>(null);
   const [playerOpen, setPlayerOpen] = useState(true);
+  // #36 可移植包导出结果提示（桌面显示保存路径；Web 自动下载）
+  const [exportNote, setExportNote] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [volume, setVolume] = useState(80);
   const [page, setPage] = useState(1);
@@ -168,7 +171,15 @@ export function VoiceIdentitiesView({ globalSearch = '', onUseForGeneration, onC
 
     {playerOpen && preview && <div className={`vi-player ${expanded ? 'is-expanded' : ''}`} role="region" aria-label="声音角色试听播放器"><div className="vi-player-identity"><div className="vi-player-mark"><AudioLines size={17} /></div><div><strong>{preview.name} {preview.version.replace(/\.\d$/, '')}</strong><span>正式样音</span></div></div><div className="vi-player-controls"><button type="button" className="vi-play" aria-label="播放样音" title="样音文件待接入" disabled><Play size={16} fill="currentColor" /></button><span>0:00</span><input type="range" min="0" max={preview.sampleDuration || 23} value="0" aria-label="播放进度" disabled /><span>{formatTime(preview.sampleDuration || 23)}</span></div><div className="vi-player-tail"><Volume2 size={17} /><input type="range" min="0" max="100" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="音量" /><button type="button" title="展开播放器" aria-label="展开播放器" onClick={() => setExpanded(value => !value)}><Maximize2 size={16} /></button><button type="button" title="关闭播放器" aria-label="关闭播放器" onClick={() => setPlayerOpen(false)}><X size={18} /></button></div>{expanded && <div className="vi-player-expanded">{preview.name} · {preview.source} · {preview.language} · {preview.version}</div>}</div>}
 
-    {detail && <div className="vi-overlay" onMouseDown={() => setDetail(null)}><aside className="vi-detail" onMouseDown={event => event.stopPropagation()} aria-label="声音角色详情"><div className="vi-panel-header"><span>声音角色详情</span><button type="button" onClick={() => setDetail(null)} aria-label="关闭详情"><X size={18} /></button></div><div className="vi-detail-hero"><WaveThumb source={detail.source} /><div><h2>{detail.name}</h2><p>{detail.ownerDescription}</p><span className={`vi-status vi-status--${detail.status === '已发布' ? 'published' : detail.status === '评审中' ? 'review' : detail.status === '草稿' ? 'draft' : 'retired'}`}>{detail.status}</span></div></div><p className="vi-detail-copy">{detail.description}</p><dl><div><dt>归属对象</dt><dd>{detail.ownerType} · {detail.ownerName}</dd></div><div><dt>创建方式</dt><dd>{detail.source}</dd></div><div><dt>语言</dt><dd>{detail.language}</dd></div><div><dt>当前版本</dt><dd>{detail.version}</dd></div><div><dt>授权状态</dt><dd>{detail.license}</dd></div></dl><button className="vi-detail-preview" type="button" onClick={() => { setPreview(detail); setPlayerOpen(true); setDetail(null); }}><Headphones size={16} />试听正式样音</button></aside></div>}
+    {detail && <div className="vi-overlay" onMouseDown={() => setDetail(null)}><aside className="vi-detail" onMouseDown={event => event.stopPropagation()} aria-label="声音角色详情"><div className="vi-panel-header"><span>声音角色详情</span><button type="button" onClick={() => setDetail(null)} aria-label="关闭详情"><X size={18} /></button></div><div className="vi-detail-hero"><WaveThumb source={detail.source} /><div><h2>{detail.name}</h2><p>{detail.ownerDescription}</p><span className={`vi-status vi-status--${detail.status === '已发布' ? 'published' : detail.status === '评审中' ? 'review' : detail.status === '草稿' ? 'draft' : 'retired'}`}>{detail.status}</span></div></div><p className="vi-detail-copy">{detail.description}</p><dl><div><dt>归属对象</dt><dd>{detail.ownerType} · {detail.ownerName}</dd></div><div><dt>创建方式</dt><dd>{detail.source}</dd></div><div><dt>语言</dt><dd>{detail.language}</dd></div><div><dt>当前版本</dt><dd>{detail.version}</dd></div><div><dt>授权状态</dt><dd>{detail.license}</dd></div></dl><button className="vi-detail-preview" type="button" onClick={() => { setPreview(detail); setPlayerOpen(true); setDetail(null); }}><Headphones size={16} />试听正式样音</button>
+          {detail.status === '已发布' && <div className="vi-detail-export">
+            <button type="button" onClick={() => {
+              void saveFromUrl(`semovix-voice-profile-${detail.id}-${detail.version}.zip`, `/api/voice-profiles/${encodeURIComponent(detail.id)}/${encodeURIComponent(detail.version)}/export`)
+                .then(result => setExportNote(result.savedPath ? `可移植包已保存：${result.savedPath}` : '可移植包已开始下载。'))
+                .catch(error => setExportNote(error instanceof Error ? error.message : '导出失败。'));
+            }}>导出可移植包（{detail.version}）</button>
+            {exportNote && <small>{exportNote}</small>}
+          </div>}</aside></div>}
 
   </div>;
 }

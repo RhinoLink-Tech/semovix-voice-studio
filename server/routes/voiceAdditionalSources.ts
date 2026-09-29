@@ -80,7 +80,16 @@ type ImportedProfile = {
   referenceDuration: number;
   referenceSampleRate: number;
   referenceText?: string;
+  /** #36：导出包携带的许可摘要（无 license.json 的旧包为 null） */
+  license?: ImportedLicenseSummary | null;
   importedAt: string;
+};
+/** 许可摘要：只入档元数据，license.json 本体随包留存于导入目录 */
+export type ImportedLicenseSummary = {
+  kind: string;
+  spdxIdentifier: string | null;
+  carriedFrom: string | null;
+  redistributionAllowed: boolean;
 };
 
 type ImportedManifest = {
@@ -307,7 +316,40 @@ async function loadImportedProfile(buffer: Buffer) {
     const expected = (await manifestHashEntry.async('text')).trim().split(/\s+/)[0];
     if (!SHA256.test(expected) || expected !== hash(`${JSON.stringify(manifest, null, 2)}\n`) && expected !== hash(manifestBuffer)) throw new Error('Manifest SHA-256 校验失败。');
   }
-  return { manifest, manifestBuffer, manifestHash: hash(manifestBuffer), reference, referenceHash: actualReferenceHash, parsed, profileName, version, productionModel, allowedUses, prohibitedUses };
+  // #36 可选元数据（Semovix 导出包携带）：许可摘要 / 来源证据 / 加水印预览。
+  // 全部可选——不带这些条目的旧格式包仍可导入（扩展不破坏）
+  let licenseSummary: ImportedLicenseSummary | null = null;
+  const licenseEntry = zip.file('license.json');
+  if (licenseEntry) {
+    const content = await licenseEntry.async('nodebuffer');
+    if (content.length > 256 * 1024) throw new Error('license.json 超过 256 KB 限制。');
+    let parsedLicense: any;
+    try { parsedLicense = JSON.parse(content.toString('utf8')); }
+    catch { throw new Error('license.json 不是合法 JSON。'); }
+    const kind = text(parsedLicense?.license?.kind, 40);
+    if (!kind) throw new Error('license.json 缺少许可类别。');
+    licenseSummary = {
+      kind,
+      spdxIdentifier: typeof parsedLicense?.license?.spdxIdentifier === 'string' ? parsedLicense.license.spdxIdentifier : null,
+      carriedFrom: typeof parsedLicense?.license?.carriedFrom === 'string' ? parsedLicense.license.carriedFrom : null,
+      redistributionAllowed: parsedLicense?.redistribution?.allowed === true,
+    };
+  }
+  const evidenceEntry = zip.file('source-evidence.json');
+  let evidence: Buffer | null = null;
+  if (evidenceEntry) {
+    evidence = await evidenceEntry.async('nodebuffer');
+    if (evidence.length > 256 * 1024) throw new Error('source-evidence.json 超过 256 KB 限制。');
+    try { JSON.parse(evidence.toString('utf8')); }
+    catch { throw new Error('source-evidence.json 不是合法 JSON。'); }
+  }
+  const previewEntry = zip.file('preview.wav');
+  let preview: Buffer | null = null;
+  if (previewEntry) {
+    preview = await previewEntry.async('nodebuffer');
+    if (preview.length > 20 * 1024 * 1024) throw new Error('preview.wav 超过 20 MB 限制。');
+  }
+  return { manifest, manifestBuffer, manifestHash: hash(manifestBuffer), reference, referenceHash: actualReferenceHash, parsed, profileName, version, productionModel, allowedUses, prohibitedUses, licenseSummary, evidence, preview };
 }
 
 voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profile', uploadSingle('profile'), async (req, res) => {
@@ -327,6 +369,7 @@ voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profil
       manifestFile: 'manifest.json', manifestSha256: loaded.manifestHash,
       referenceFile: 'reference.wav', referenceSha256: loaded.referenceHash,
       referenceDuration: Math.round(loaded.parsed.durationSec * 1000) / 1000, referenceSampleRate: loaded.parsed.format.sampleRate,
+      license: loaded.licenseSummary,
       importedAt: new Date().toISOString(),
     };
     const folder = path.join(importedRoot(req.params.identityId), id);
@@ -338,6 +381,9 @@ voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profil
         writeBinary(path.join(folder, record.packageFile), req.file.buffer),
         writeBinary(path.join(folder, record.manifestFile), loaded.manifestBuffer),
         writeBinary(path.join(folder, record.referenceFile), loaded.reference),
+        // #36 元数据随包归档（许可/证据/预览本体留存，供追溯与展示）
+        ...(loaded.evidence ? [writeBinary(path.join(folder, 'source-evidence.json'), loaded.evidence)] : []),
+        ...(loaded.preview ? [writeBinary(path.join(folder, 'preview.wav'), loaded.preview)] : []),
         writeJson(path.join(folder, 'import.json'), record),
       ]);
       await writeJson(importedRecordFile(req.params.identityId), record);
