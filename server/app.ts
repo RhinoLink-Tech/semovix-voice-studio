@@ -21,6 +21,7 @@ import { voiceAdditionalSourcesRouter } from './routes/voiceAdditionalSources';
 import { voiceSourceLifecycleRouter } from './routes/voiceSourceLifecycle';
 import { voiceProfilesRouter } from './routes/voiceProfiles';
 import { jobsRouter } from './routes/jobs';
+import { eventsRouter } from './routes/events';
 
 export function createApp(): express.Express {
   const app = express();
@@ -45,6 +46,8 @@ export function createApp(): express.Express {
   app.use('/api', voiceSourceLifecycleRouter);
   app.use('/api', voiceProfilesRouter);
   app.use('/api', jobsRouter);
+  // P1 #34：SSE 事件流（长连接；自身不 next 错误，不经过下方错误中间件）
+  app.use('/api', eventsRouter);
 
   // P0-B #24：全局错误中间件——路由内 re-throw 的意外异常一律 JSON 下发，
   // 不再落回 Express 默认 HTML 500（破坏错误合同的路径已全部收口到这里）

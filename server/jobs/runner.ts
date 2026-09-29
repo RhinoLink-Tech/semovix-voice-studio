@@ -31,11 +31,40 @@ import type {
 } from './types';
 import { EngineValidationError } from '../engines/errors';
 import { WorkerNotReadyError } from '../engines/qwenWorker';
+import { publish } from '../events/eventBus';
+import { publicJob } from './publicJob';
 
 /** 幂等键保留时长（终态任务超过后释放键） */
 const IDEMPOTENCY_TTL_MS = 7 * 24 * 3600 * 1000;
 /** warming 重启重排的尝试上限 */
 const MAX_BOOT_ATTEMPT = 3;
+/** job.updated 进度事件节流间隔（P1 #34；终点进度与状态翻转不受限） */
+const PROGRESS_EVENT_MIN_MS = 250;
+
+/* ---------------- SSE 事件旁路（P1 #34，只读不影响调度语义） ---------------- */
+
+const lastProgressEmitAt = new Map<string, number>();
+
+/** 发布 job.updated；terminal 时顺带清理进度节流记账 */
+function emitJobEvent(jobId: string, reason: 'created' | 'progress' | 'state' | 'terminal'): void {
+  if (reason === 'terminal') lastProgressEmitAt.delete(jobId);
+  const job = getJob(jobId);
+  if (!job) return;
+  publish('job.updated', { job: publicJob(job), reason });
+}
+
+/** 进度事件节流：距上次 ≥250ms 或已到终点（completed===total）才放行 */
+function progressEventDue(jobId: string, completed: number, total: number): boolean {
+  if (total > 0 && completed >= total) {
+    lastProgressEmitAt.delete(jobId);
+    return true;
+  }
+  const now = Date.now();
+  const last = lastProgressEmitAt.get(jobId);
+  if (last !== undefined && now - last < PROGRESS_EVENT_MIN_MS) return false;
+  lastProgressEmitAt.set(jobId, now);
+  return true;
+}
 
 interface ActiveRun {
   controller: AbortController;
@@ -113,6 +142,8 @@ export function submitJob(input: SubmitJobInput): SubmitResult {
     }
     throw error;
   }
+  // 先发 created 再入队：pump() 会同步启动队头任务（state/progress 事件紧随其后）
+  emitJobEvent(job.id, 'created');
   enqueue(job, executor);
   return { kind: 'created', job };
 }
@@ -146,6 +177,7 @@ async function finalizeBeforeStart(job: RuntimeJob, executor: JobExecutor, outco
     finishedAt,
     cancelRequested: false,
   });
+  emitJobEvent(job.id, 'terminal');
   clearIdempotencyKey(job.id);
 }
 
@@ -198,6 +230,7 @@ async function startJob(id: string, executor: JobExecutor): Promise<void> {
   const startedAt = new Date().toISOString();
   const deadlineAt = new Date(Date.now() + executor.jobTimeoutMs).toISOString();
   updateJob(id, { status: 'warming', startedAt, deadlineAt });
+  emitJobEvent(id, 'state');
   // 整任务 Deadline（doc #16）：到点 abort，execute 内的 signal 透传随之中断
   const deadlineTimer = setTimeout(() => {
     run.reason = 'timeout';
@@ -219,6 +252,7 @@ async function startJob(id: string, executor: JobExecutor): Promise<void> {
     progress: (completed, total, stage) => {
       if (run.status === 'warming') { run.status = 'running'; updateJob(id, { status: 'running' }); }
       updateJob(id, { progress: { completed, total, stage } });
+      if (progressEventDue(id, completed, total)) emitJobEvent(id, 'progress');
     },
     setTimeoutStage: stage => {
       run.timeoutStage = stage;
@@ -266,6 +300,7 @@ async function startJob(id: string, executor: JobExecutor): Promise<void> {
     finishedAt: new Date().toISOString(),
     cancelRequested: false,
   });
+  emitJobEvent(id, 'terminal');
   if (outcome.status === 'cancelled') clearIdempotencyKey(id);
   releaseAndPump(id);
 }
@@ -286,6 +321,7 @@ export function requestCancel(jobId: string, reason: CancelReason = 'user_cancel
   if (job.status !== 'queued' && job.status !== 'warming' && job.status !== 'running') return job;
   const run = active.get(jobId);
   updateJob(jobId, { cancelRequested: true, cancelReason: reason });
+  emitJobEvent(jobId, 'state');
   if (run) {
     run.reason = reason;
     run.controller.abort();
@@ -437,4 +473,5 @@ export function resetRunnerStateForTests(): void {
   active.clear();
   waiting.clear();
   executors.clear();
+  lastProgressEmitAt.clear();
 }

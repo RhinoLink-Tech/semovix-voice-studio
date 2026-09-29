@@ -5,33 +5,13 @@
  */
 import { Router } from 'express';
 import { listRuntimeJobs, getRuntimeJob, requestCancel } from '../jobs/runner';
-import { ACTIVE_JOB_STATUSES, JOB_STATUSES, type CancelReason, type JobStatus, type JobType, type RuntimeJob } from '../jobs/types';
+import { ACTIVE_JOB_STATUSES, JOB_STATUSES, type CancelReason, type JobStatus, type JobType } from '../jobs/types';
+import { publicJob } from '../jobs/publicJob';
 import { fail } from './respond';
 
 export const jobsRouter = Router();
 
 const JOB_TYPES: readonly JobType[] = ['voice-design', 'voice-clone', 'validation', 'synthesis', 'transcription'];
-
-function publicJob(job: RuntimeJob) {
-  return {
-    id: job.id,
-    type: job.type,
-    status: job.status,
-    progress: job.progress,
-    payload: job.payload,
-    identityId: job.identityId,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    deadlineAt: job.deadlineAt,
-    attempt: job.attempt,
-    timeoutStage: job.timeoutStage,
-    cancelRequested: job.cancelRequested,
-    cancelReason: job.cancelReason,
-    error: job.error,
-  };
-}
 
 jobsRouter.get('/jobs', async (req, res) => {
   const type = typeof req.query.type === 'string' ? req.query.type : undefined;

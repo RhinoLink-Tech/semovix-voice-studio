@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
 import { cancelJob } from '../utils/jobs';
+import { useEventStream, type JobUpdatedEvent } from '../hooks/useEventStream';
 import './VoiceIdentityDesignView.css';
 
 type Direction = { id: string; name: string; description: string; features: string[] };
@@ -171,13 +172,23 @@ export function VoiceIdentityDesignView({ id, onCenter, onOverview, onReview }: 
     } catch { /* no saved batch */ }
   }, [id]);
 
-  useEffect(() => {
-    if (!batch || ['completed', 'failed', 'cancelled'].includes(batch.status)) return;
-    const timer = window.setInterval(() => {
-      fetch(`/api/voice-design/batches/${encodeURIComponent(batch.id)}`).then(response => response.ok ? response.json() as Promise<Batch> : null).then(value => { if (value) setBatch(value); }).catch(() => undefined);
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [batch?.id, batch?.status]);
+  // 活跃批次刷新（P1 #34）：SSE job.updated 事件驱动；断流降级回 2s 轮询
+  const refreshBatch = async (batchId: string) => {
+    try {
+      const response = await fetch(`/api/voice-design/batches/${encodeURIComponent(batchId)}`);
+      const value = response.ok ? await response.json() as Batch : null;
+      if (value) setBatch(value);
+    } catch { /* 下次刷新兜底 */ }
+  };
+  const batchActive = Boolean(batch && !['completed', 'failed', 'cancelled'].includes(batch.status));
+  useEventStream(['job.updated'], event => {
+    const job = (event.data as JobUpdatedEvent | null)?.job;
+    if (!batch || job?.payload?.kind !== 'design-batch' || job.payload.externalId !== batch.id) return;
+    void refreshBatch(batch.id);
+  }, {
+    pollFn: () => { if (batchActive && batch) void refreshBatch(batch.id); },
+    pollMs: 2000,
+  });
 
   const totalCandidates = draft.directions.length * draft.candidatesPerDirection;
   const primaryLanguage = identity.form?.language || (identity.language === '中文' ? '中文（普通话）' : identity.language);

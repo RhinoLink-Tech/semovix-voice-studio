@@ -276,3 +276,27 @@ describe('captureModelIdentity（P0-B #20）', () => {
     expect(await captureModelIdentity('voice_clone')).toBeNull();
   });
 });
+
+describe('getWorkerStatus 搭车观测 → engine.updated（P1 #34）', () => {
+  it('publishes engine.updated on state diff and stays silent when unchanged', async () => {
+    const client = await importClient();
+    const eventBus = await import('../../server/events/eventBus');
+    const seen: Array<{ type: string; data: unknown }> = [];
+    const off = eventBus.subscribe(e => seen.push(e));
+
+    let qwen = 'cold';
+    plan = () => healthWith(qwen);
+    await client.getWorkerStatus(); // 首次观测：只建基线，不发布
+    expect(seen.filter(e => e.type === 'engine.updated')).toHaveLength(0);
+
+    qwen = 'loading';
+    await client.getWorkerStatus(); // 状态变化 → 发布
+    const events = seen.filter(e => e.type === 'engine.updated');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.data as Record<string, unknown>).toMatchObject({ reachable: true, engines: { qwen_tts: { state: 'loading' } } });
+
+    await client.getWorkerStatus(); // 无变化 → 不再发布
+    expect(seen.filter(e => e.type === 'engine.updated')).toHaveLength(1);
+    off();
+  });
+});

@@ -3,6 +3,7 @@ import { ArrowLeft, AudioLines, Check, CircleHelp, FileCheck2, Headphones, Pause
 import { isDesktopMode, saveFromUrl } from '../desktop/fileDialogs';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
 import { cancelJob } from '../utils/jobs';
+import { useEventStream, type JobUpdatedEvent } from '../hooks/useEventStream';
 import './VoiceIdentityAdditionalSources.css';
 
 type Identity = { name: string; ownerName: string; language: string; source: string; status: string };
@@ -67,11 +68,16 @@ export function VoiceIdentityProviderPresetView({ id, onCenter, onValidation }: 
   };
 
   useEffect(() => { void hydrate().catch(error => setMessage(error instanceof Error ? error.message : '加载来源配置失败。')); }, [id]);
-  useEffect(() => {
-    if (!selection?.preview || !['queued', 'warming', 'running'].includes(selection.preview.status)) return;
-    const timer = window.setInterval(() => { void hydrate().catch(() => undefined); }, 3000);
-    return () => window.clearInterval(timer);
-  }, [selection?.preview?.id, selection?.preview?.status]);
+  // 试听样音任务刷新（P1 #34）：SSE job.updated 事件驱动（按 identity 过滤）；断流降级回 3s 轮询
+  const previewActive = Boolean(selection?.preview && ['queued', 'warming', 'running'].includes(selection.preview.status));
+  useEventStream(['job.updated'], event => {
+    const job = (event.data as JobUpdatedEvent | null)?.job;
+    if (job?.payload?.kind !== 'provider-preview' || job.payload.identityId !== id) return;
+    void hydrate().catch(() => undefined);
+  }, {
+    pollFn: () => { if (previewActive) void hydrate().catch(() => undefined); },
+    pollMs: 3000,
+  });
   useEffect(() => { if (audio.current) audio.current.volume = volume / 100; }, [volume]);
 
   const save = async () => {

@@ -6,6 +6,7 @@
  * evictPending 与进程内存（#21），并提供 unload 动作（显式卸载释放权重与显存）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEventStream, type StreamMode } from './useEventStream';
 
 export interface EngineCapabilities {
   presetVoice: boolean;
@@ -89,15 +90,12 @@ export function useEngineResources(pollMs = 5000) {
 
   useEffect(() => {
     aliveRef.current = true;
-    void refresh();
-    const timer = setInterval(() => {
-      if (aliveRef.current) void refresh();
-    }, pollMs);
-    return () => {
-      aliveRef.current = false;
-      clearInterval(timer);
-    };
-  }, [refresh, pollMs]);
+    void refresh(); // REST 初载快照；后续刷新交给 engine.updated 事件（P1 #34）
+    return () => { aliveRef.current = false; };
+  }, [refresh]);
+
+  // engine.updated 事件驱动刷新（P1 #34）；SSE 断流时降级回原 pollMs 轮询
+  const { mode } = useEventStream(['engine.updated'], () => { void refresh(); }, { pollFn: refresh, pollMs });
 
   const unload = useCallback(async (engineApiId: string) => {
     const param = WORKER_ENGINE_PARAM[engineApiId];
@@ -122,5 +120,5 @@ export function useEngineResources(pollMs = 5000) {
     }
   }, [refresh]);
 
-  return { engines, process, workerReachable, refresh, unload, unloading, message, setMessage };
+  return { engines, process, workerReachable, refresh, unload, unloading, message, setMessage, mode };
 }

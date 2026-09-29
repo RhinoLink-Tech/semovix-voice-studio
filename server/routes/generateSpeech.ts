@@ -12,6 +12,7 @@ import { resolveTtsAdapter } from '../engines/tts';
 import { hasGeminiApiKey } from '../engines/geminiClient';
 import { EngineValidationError, describeError } from '../engines/errors';
 import { captureModelIdentity, WorkerNotReadyError, type WorkerModelIdentity } from '../engines/qwenWorker';
+import { publish } from '../events/eventBus';
 import { fail } from './respond';
 import { recordGeneration, writeArtifactFile } from '../db/generationsStore';
 
@@ -73,6 +74,9 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
     const genId = generationId();
     const inputText = String(text).slice(0, 2000);
     const inputTextHash = crypto.createHash('sha256').update(inputText).digest('hex'); // #28
+    const startedAtMs = Date.now();
+    // P1 #34：阻塞响应契约不变，事件供列表页等处即时刷新（普通 TTS 的 SSE 通路）
+    publish('tts.started', { generationId: genId, engine: adapter.id, ttsModel });
 
     let result;
     try {
@@ -116,6 +120,7 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
         model_revision: failedIdentity?.revision ?? null,
         device: failedIdentity?.deviceType ?? null,
       });
+      publish('tts.failed', { generationId: genId, engine: adapter.id, ttsModel, error: described.slice(0, 500), durationMs: Date.now() - startedAtMs });
       return fail(res, 502, described || 'TTS engine call failed.', 'tts_engine_failed', { engine: adapter.id, generationId: genId });
     }
 
@@ -145,6 +150,14 @@ generateSpeechRouter.post('/generate-speech', async (req, res) => {
       voice_identity_id: result.provenance?.voiceIdentityId ?? null,
       voice_profile_version: result.provenance?.voiceProfileVersion ?? null,
       manifest_hash: result.provenance?.manifestHash ?? null,
+    });
+    publish('tts.completed', {
+      generationId: genId,
+      engine: adapter.id,
+      ttsModel,
+      durationMs: Date.now() - startedAtMs,
+      artifactUrl: `/api/artifacts/${genId}`,
+      voiceIdentityId: result.provenance?.voiceIdentityId ?? null,
     });
 
     res.json({

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, AudioLines, CheckCircle2, CircleAlert, ClipboardCheck, FileCheck2, Headphones, LockKeyhole, Pause, Play, RefreshCw, Save, ShieldCheck, Volume2, X } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
 import { cancelJob } from '../utils/jobs';
+import { useEventStream, type JobUpdatedEvent } from '../hooks/useEventStream';
 import './VoiceIdentitySourceValidationView.css';
 
 type Source = '授权真人克隆' | 'Provider 预置音色' | '导入已有 Voice Profile';
@@ -48,11 +49,16 @@ export function VoiceIdentitySourceValidationView({ id, onBack }: { id: string; 
   };
 
   useEffect(() => { void load().catch(error => setMessage(error instanceof Error ? error.message : '加载失败。')); }, [id]);
-  useEffect(() => {
-    if (!validation || !['queued', 'running'].includes(validation.status)) return;
-    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 2500);
-    return () => window.clearInterval(timer);
-  }, [validation?.status]);
+  // 来源验证任务刷新（P1 #34）：SSE job.updated 事件驱动（按 identity 过滤）；断流降级回 2.5s 轮询
+  const validationActive = Boolean(validation && ['queued', 'running'].includes(validation.status));
+  useEventStream(['job.updated'], event => {
+    const job = (event.data as JobUpdatedEvent | null)?.job;
+    if (job?.payload?.kind !== 'source-validation' || job.payload.identityId !== id) return;
+    void load().catch(() => undefined);
+  }, {
+    pollFn: () => { if (validationActive) void load().catch(() => undefined); },
+    pollMs: 2500,
+  });
   useEffect(() => { if (audio.current) audio.current.volume = volume / 100; }, [volume]);
 
   const startValidation = async () => {

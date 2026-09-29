@@ -8,6 +8,7 @@
  */
 import { getConfig } from '../config';
 import { EngineValidationError } from './errors';
+import { observeWorkerSnapshot } from '../events/engineWatcher';
 
 /* ---------------- 冷启动状态机（P01） ---------------- */
 
@@ -112,7 +113,7 @@ export async function getWorkerStatus(): Promise<WorkerStatus> {
         ...(raw.modelInfo !== undefined ? { modelInfo: raw.modelInfo as WorkerModelIdentity } : {}),
       };
     };
-    return {
+    const status: WorkerStatus = {
       reachable: true,
       qwen_tts: snap('qwen_tts'),
       voice_design: snap('voice_design'),
@@ -121,6 +122,9 @@ export async function getWorkerStatus(): Promise<WorkerStatus> {
       ...(data.process !== undefined ? { process: data.process } : {}),
       ...(data.protocolVersion !== undefined ? { protocolVersion: Number(data.protocolVersion) || 0 } : {}),
     };
+    // 搭车观测（P1 #34）：每次成功的状态查询顺手喂给引擎监听器（有变化才发事件）
+    observeWorkerSnapshot(status);
+    return status;
   } catch {
     return unreachable();
   }

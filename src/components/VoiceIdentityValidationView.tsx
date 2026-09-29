@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
 import { cancelJob } from '../utils/jobs';
+import { useEventStream, type JobUpdatedEvent } from '../hooks/useEventStream';
 import './VoiceIdentityValidationView.css';
 
 type Identity = { id: string; name: string; ownerName: string; language: string; source: string; status: string };
@@ -102,11 +103,16 @@ export function VoiceIdentityValidationView({ id, batchId, onBack }: { id: strin
   };
 
   useEffect(() => { void load(); }, [id, batchId]);
-  useEffect(() => {
-    if (!run || !['queued', 'warming', 'running'].includes(run.status)) return undefined;
-    const timer = window.setInterval(() => void load(), 3500);
-    return () => window.clearInterval(timer);
-  }, [run?.status, id, batchId]);
+  // 稳定性验证任务刷新（P1 #34）：SSE job.updated 事件驱动；断流降级回 3.5s 轮询
+  const runActive = Boolean(run && ['queued', 'warming', 'running'].includes(run.status)); // 渲染层（runStateText 等）同样复用
+  useEventStream(['job.updated'], event => {
+    const job = (event.data as JobUpdatedEvent | null)?.job;
+    if (job?.payload?.kind !== 'stability-validation' || job.payload.externalId !== batchId) return;
+    void load();
+  }, {
+    pollFn: () => { if (runActive) void load(); },
+    pollMs: 3500,
+  });
 
   const selectedCandidate = useMemo(() => run?.candidates.find(candidate => candidate.candidateId === candidateId) || null, [run, candidateId]);
   const selectedScenario = useMemo(() => run?.scenarios.find(scenario => scenario.id === taskId) || run?.scenarios[0] || null, [run, taskId]);
@@ -204,7 +210,6 @@ export function VoiceIdentityValidationView({ id, batchId, onBack }: { id: strin
   const ownerName = identity?.ownerName || '当前归属对象';
   const runStateText = !run ? '尚未启动' : run.status === 'completed' ? '全部生成完成' : run.status === 'failed' ? '生成失败' : run.status === 'cancelled' ? '已取消' : '生成中';
   const primaryLabel = publishedAt ? `已发布 ${profileVersion}` : !run ? '开始稳定性验证' : run.status === 'failed' ? '验证失败 · 创建新批次' : run.status === 'cancelled' ? '已取消 · 创建新批次' : !validationReady ? `验证进行中 · ${run.completedOutputs} / ${run.totalOutputs}` : `冻结并发布 ${profileVersion}`;
-  const runActive = Boolean(run && ['queued', 'warming', 'running'].includes(run.status));
 
   return <div className="voice-validation-page">
     <VoiceWorkspaceSidebar active="验证与发布" name={roleName} owner={ownerName} source="AI 原创设计" status={publishedAt ? '已发布' : validationReady ? '待冻结' : '验证中'} language={identity?.language || '中文（普通话）'} roleSummary sourceHint="已完成" verificationHint={runStateText} onOverview={onBack} onSource={onBack} />

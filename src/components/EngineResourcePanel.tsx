@@ -92,7 +92,7 @@ function EngineRow({ engine, onUnload, unloading }: { engine: EngineResourceEntr
 }
 
 export function EngineResourcePanel() {
-  const { engines, process, workerReachable, refresh, unload, unloading, message, setMessage } = useEngineResources();
+  const { engines, process, workerReachable, refresh, unload, unloading, message, setMessage, mode } = useEngineResources();
   const workerEngines = engines.filter(e => WORKER_ENGINE_IDS.includes(e.id));
 
   if (!workerEngines.length) return null;
@@ -110,6 +110,12 @@ export function EngineResourcePanel() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <span
+            title={mode === 'sse' ? '事件流实时推送（SSE）' : '事件流不可用，已降级为定时轮询'}
+            className={`text-[10px] px-1.5 py-0.5 rounded border ${mode === 'sse' ? 'text-emerald-300 border-emerald-900/60 bg-emerald-950/40' : 'text-amber-300 border-amber-900/60 bg-amber-950/40'}`}
+          >
+            {mode === 'sse' ? '实时' : '轮询'}
+          </span>
           {process?.residentMb != null && (
             <span className="text-[10px] font-mono text-neutral-400">Worker 内存 {formatMemory(process.residentMb)}</span>
           )}

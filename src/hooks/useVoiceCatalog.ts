@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { VoiceProvider } from '../types/audio';
 import { AVAILABLE_VOICES } from '../utils/voiceModelConfig';
 import type { ProviderVoiceEntry } from '../utils/voiceProvider';
+import { useEventStream } from './useEventStream';
 
 export type EngineRuntimeState = 'cold' | 'loading' | 'ready' | 'error' | 'unreachable';
 
@@ -107,12 +108,11 @@ async function fetchQwenStatus(): Promise<{ state: EngineRuntimeState; error: st
   }
 }
 
-/** 通用 Worker 引擎状态（qwen_tts / whisper_asr）：自动预热 + 2s 轮询直至 ready/error */
+/** 通用 Worker 引擎状态（qwen_tts / whisper_asr）：自动预热；engine.updated 事件驱动刷新，SSE 断流降级回 cold/loading 2s 轮询 */
 export function useWorkerEngine(engineId: 'qwen_tts' | 'whisper_asr', autoWarmup = true) {
   const [state, setState] = useState<EngineRuntimeState>('cold');
   const [error, setError] = useState<string | null>(null);
   const [warming, setWarming] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aliveRef = useRef(true);
 
   const poll = useCallback(async () => {
@@ -162,28 +162,24 @@ export function useWorkerEngine(engineId: 'qwen_tts' | 'whisper_asr', autoWarmup
     void poll();
     return () => {
       aliveRef.current = false;
-      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [poll]);
 
-  // cold → 自动预热；cold/loading → 2s 轮询；ready/error → 停止轮询（error 可手动 warmup 重试）
+  // cold → 自动预热（服务端幂等；error 可手动 warmup 重试）
   useEffect(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (state === 'cold' && autoWarmup) {
-      void warmup();
-    }
-    if (state === 'cold' || state === 'loading') {
-      timerRef.current = setInterval(() => {
-        if (aliveRef.current) void poll();
-      }, 2000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [state, autoWarmup, warmup, poll]);
+    if (state === 'cold' && autoWarmup) void warmup();
+  }, [state, autoWarmup, warmup]);
+
+  // 引擎状态事件驱动刷新（P1 #34）：SSE 健康时 cold/loading 不再空转轮询；
+  // 断流降级时恢复原 cold/loading 2s 轮询直至 ready/error
+  useEventStream(['engine.updated'], () => {
+    if (aliveRef.current) void poll();
+  }, {
+    pollFn: () => {
+      if (aliveRef.current && (state === 'cold' || state === 'loading')) void poll();
+    },
+    pollMs: 2000,
+  });
 
   return { state, error, warmup, warming, refresh: poll };
 }

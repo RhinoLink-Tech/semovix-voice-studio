@@ -68,6 +68,7 @@ async function waitUntil(condition: () => boolean, timeoutMs = 4000): Promise<vo
 let dir: string;
 let runner: typeof import('../../server/jobs/runner');
 let store: typeof import('../../server/jobs/store');
+let eventBus: typeof import('../../server/events/eventBus');
 
 beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'semovix-jobs-runner-'));
@@ -76,12 +77,15 @@ beforeEach(async () => {
   resetConfigCache();
   runner = await import('../../server/jobs/runner');
   store = await import('../../server/jobs/store');
+  eventBus = await import('../../server/events/eventBus');
+  eventBus.resetEventBusForTests();
   runner.resetRunnerStateForTests();
 });
 
 afterEach(() => {
   // 先停模块态（abort 挂起任务），再清理目录，避免遗留续写落到已删除的库
   runner.resetRunnerStateForTests();
+  eventBus.resetEventBusForTests();
   delete process.env.SEMOVIX_LIBRARY_DIR;
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -242,5 +246,53 @@ describe('job runner', () => {
     harness.release();
     await waitUntil(() => store.getJob(job.id)?.status === 'succeeded');
     expect(store.findByIdempotencyKey('key-ok')?.id).toBe(job.id);
+  });
+});
+
+describe('job runner SSE 事件旁路（P1 #34）', () => {
+  interface JobEventData { job: { id: string; status: string; cancelReason?: string | null; progress: { completed: number; total: number } | null }; reason: string }
+
+  function collectJobEvents(jobId: string): JobEventData[] {
+    return eventBus.replaySince(0)
+      .filter(event => event.type === 'job.updated')
+      .map(event => event.data as JobEventData)
+      .filter(data => data.job.id === jobId);
+  }
+
+  it('emits created/warming/terminal and throttles rapid progress bursts', async () => {
+    const harness = makeHarness('provider-preview', ['qwen_tts'], {
+      execute: async ctx => {
+        ctx.progress(1, 10, 'working'); // 首次：warming→running 翻转 + 进度 → 1 条事件
+        ctx.progress(2, 10, 'working'); // 紧随其后：<250ms → 节流丢弃
+        await new Promise(resolve => setTimeout(resolve, 5));
+        ctx.progress(10, 10, 'done');   // 终点进度：不受节流 → 必发
+      },
+    });
+    runner.registerExecutor(harness.executor);
+    const job = submit(harness, 'preview-events').job;
+    await waitUntil(() => store.getJob(job.id)?.status === 'succeeded');
+
+    const reasons = collectJobEvents(job.id).map(data => data.reason);
+    expect(reasons).toEqual(['created', 'state', 'progress', 'progress', 'terminal']);
+    const events = collectJobEvents(job.id);
+    expect(events.at(-1)!.job.status).toBe('succeeded');
+    expect(events.at(-1)!.job.progress).toMatchObject({ completed: 10, total: 10 });
+  });
+
+  it('emits state on cancel request and a terminal event with cancelled status', async () => {
+    const harness = makeHarness('provider-preview', ['qwen_tts']);
+    runner.registerExecutor(harness.executor);
+    const job = submit(harness, 'preview-cancel-event').job;
+    await harness.nextStart();
+
+    runner.requestCancel(job.id, 'user_cancel');
+    await waitUntil(() => store.getJob(job.id)?.status === 'cancelled');
+
+    const events = collectJobEvents(job.id);
+    const reasons = events.map(data => data.reason);
+    expect(reasons).toContain('state'); // cancelRequested 标记事件
+    expect(reasons.at(-1)).toBe('terminal');
+    expect(events.at(-1)!.job.status).toBe('cancelled');
+    expect(events.at(-1)!.job.cancelReason).toBe('user_cancel');
   });
 });
