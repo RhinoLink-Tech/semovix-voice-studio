@@ -114,7 +114,7 @@ export function createMcpServer(context: McpRequestContext): McpServer {
     {
       title: '语音合成（已发布 Voice Profile）',
       description:
-        '用已发布 Voice Profile 合成语音，产物为 24kHz 16-bit PCM WAV。voice 省略时按 agent 绑定 → 全局默认 → 唯一已发布 Profile 解析（#47）。结果只含音频 URL 与本地文件路径，不含音频字节；每次调用写入 generations 使用记录。',
+        '用已发布 Voice Profile 合成语音，产物为 24kHz 16-bit PCM WAV（format=mp3/opus 时 audioUrl 指向按需转码的压缩衍生，需本机装有 ffmpeg）。voice 省略时按 agent 绑定 → 全局默认 → 唯一已发布 Profile 解析（#47）。结果只含音频 URL 与本地文件路径，不含音频字节；每次调用写入 generations 使用记录。',
       inputSchema: {
         text: z.string().describe('要合成的文本'),
         voice: z
@@ -124,9 +124,10 @@ export function createMcpServer(context: McpRequestContext): McpServer {
         agent: z.string().optional().describe('调用方 Agent 标识（用于默认声音绑定，如 xino、video-agent）'),
         speed: z.number().optional().describe('语速（默认 1.0）'),
         emotion: z.string().optional().describe('情绪/语气提示'),
+        format: z.enum(['wav', 'mp3', 'opus']).optional().describe('衍生音频格式（默认 wav；mp3/opus 需本机装有 ffmpeg，audioUrl 以 ?format= 指向压缩版）'),
       },
     },
-    async ({ text, voice, agent, speed, emotion }) => {
+    async ({ text, voice, agent, speed, emotion, format = 'wav' }) => {
       let voiceName = voice;
       let voiceResolvedFrom: string | undefined;
       if (!voiceName) {
@@ -154,9 +155,10 @@ export function createMcpServer(context: McpRequestContext): McpServer {
         const artifact = readArtifactFile(result.generationId);
         return toolJson({
           generationId: result.generationId,
-          audioUrl: `${context.baseUrl}${result.artifactUrl}`,
+          // 压缩衍生（#48）：URL 带 ?format=，由 GET /api/artifacts/:id 按需转码
+          audioUrl: `${context.baseUrl}${result.artifactUrl}${format === 'wav' ? '' : `?format=${format}`}`,
           filePath: artifact?.filePath ?? null,
-          format: 'wav',
+          format,
           durationSeconds: result.duration,
           sampleRate: result.sampleRate,
           engine: result.engine,

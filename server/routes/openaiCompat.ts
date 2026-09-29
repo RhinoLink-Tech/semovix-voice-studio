@@ -1,7 +1,7 @@
 /**
  * OpenAI 兼容音频 API（P2 #42）
  *
- *   POST /v1/audio/speech          → 直接回音频字节（WAV；#48 将扩展 mp3/opus）
+ *   POST /v1/audio/speech          → 直接回音频字节（wav | mp3 | opus，P2 #48）
  *   POST /v1/audio/transcriptions  → { text, ... }（multipart 字段 file 或 audio）
  *   GET  /v1/audio/voices          → OpenAI list 风格音色目录
  *
@@ -22,6 +22,7 @@ import { SUPPORTED_TTS_MODELS } from '../engines/tts';
 import { qwenVoiceCatalog } from '../engines/qwenWorker';
 import { runSpeech, PipelineHttpError } from '../lib/speechPipeline';
 import { runTranscription } from '../lib/transcribePipeline';
+import { transcodeWav, transcodeContentType } from '../lib/audioTranscode';
 import { listPublishedVoiceProfiles } from '../lib/profileManifest';
 import { MAX_UPLOAD_MB } from './upload';
 import { GEMINI_PRESET_VOICES } from './voiceModelStatus';
@@ -58,8 +59,9 @@ function mapPipelineError(res: Response, error: unknown): void {
 
 /**
  * POST /v1/audio/speech
- * body: { model?, input, voice, response_format?='wav', speed?, instructions?, emotion? }
+ * body: { model?, input, voice, response_format?='wav'|'mp3'|'opus', speed?, instructions?, emotion? }
  * voice 为 profile:<id>@<v> 时自动路由 voice-profile 引擎（无需指定 model）。
+ * mp3/opus 为衍生输出（P2 #48）：内存转码，ffmpeg 缺失如实 503 transcode_unavailable。
  */
 openaiCompatRouter.post('/v1/audio/speech', async (req, res) => {
   try {
@@ -71,9 +73,8 @@ openaiCompatRouter.post('/v1/audio/speech', async (req, res) => {
     if (typeof voice !== 'string' || !voice) {
       return failOpenAI(res, 400, 'voice is required and must be a string (e.g. "profile:<identityId>@<version>" — see GET /v1/audio/voices).', 'invalid_request');
     }
-    if (responseFormat !== 'wav') {
-      // 压缩格式由 P2 #48 落地；此前如实拒绝，不静默降级为 WAV
-      return failOpenAI(res, 400, `Unsupported response_format: ${String(responseFormat)} (supported: wav)`, 'unsupported_response_format');
+    if (responseFormat !== 'wav' && responseFormat !== 'mp3' && responseFormat !== 'opus') {
+      return failOpenAI(res, 400, `Unsupported response_format: ${String(responseFormat)} (supported: wav, mp3, opus)`, 'unsupported_response_format');
     }
 
     let ttsModel: string;
@@ -96,8 +97,14 @@ openaiCompatRouter.post('/v1/audio/speech', async (req, res) => {
       source: 'openai-api',
     });
 
-    res.setHeader('Content-Type', 'audio/wav');
-    res.send(result.wav);
+    if (responseFormat === 'wav') {
+      res.setHeader('Content-Type', 'audio/wav');
+      return res.send(result.wav);
+    }
+    // 压缩衍生（#48）：WAV 权威产物已在管线落盘留痕，此处仅转换响应字节
+    const audio = await transcodeWav(result.wav, responseFormat);
+    res.setHeader('Content-Type', transcodeContentType(responseFormat));
+    res.send(audio);
   } catch (error) {
     return mapPipelineError(res, error);
   }

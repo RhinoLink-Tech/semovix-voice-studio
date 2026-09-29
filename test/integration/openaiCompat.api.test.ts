@@ -116,9 +116,10 @@ describe('POST /v1/audio/speech', () => {
     const unconfigured = await request(app).post('/v1/audio/speech').send({ input: '你好', voice: 'Kore' }).expect(400);
     expect(unconfigured.body.error).toMatchObject({ type: 'invalid_request_error', code: 'engine_not_configured' });
 
-    // 压缩格式由 #48 落地：此前如实拒绝，不静默回退 WAV
-    const badFormat = await request(app).post('/v1/audio/speech').send({ input: '你好', voice: 'Kore', response_format: 'mp3' }).expect(400);
+    // #48 已支持 mp3/opus 衍生；未知格式仍如实拒绝并列出支持集
+    const badFormat = await request(app).post('/v1/audio/speech').send({ input: '你好', voice: 'Kore', response_format: 'aac' }).expect(400);
     expect(badFormat.body.error.code).toBe('unsupported_response_format');
+    expect(badFormat.body.error.message).toContain('mp3');
   });
 });
 

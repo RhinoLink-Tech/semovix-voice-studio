@@ -152,6 +152,12 @@ describe('MCP generate_speech (#41 profile-only, #47 default voice)', () => {
     const row = await ledgerRow(app, payload.generationId);
     expect(row).toMatchObject({ engine: 'voice-profile', voice_identity_id: 'ident-base', manifest_hash: manifestHash });
     expect((row?.params as Record<string, unknown>).source).toBe('mcp');
+
+    // #48：format=mp3 时 audioUrl 指向按需转码的压缩衍生（URL 构造本身不依赖 ffmpeg）
+    const compressed = await callTool(app, sessionId, 'generate_speech', { text: '压缩格式。', voice: voiceName, format: 'mp3' });
+    expect(compressed.isError).toBe(false);
+    expect(compressed.payload.format).toBe('mp3');
+    expect(compressed.payload.audioUrl).toContain(`/api/artifacts/${compressed.payload.generationId}?format=mp3`);
   });
 
   it('resolves the default voice via agent binding → global default → single profile, and errors honestly otherwise', async () => {
