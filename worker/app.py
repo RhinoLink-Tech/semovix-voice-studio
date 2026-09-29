@@ -1034,22 +1034,72 @@ def _dir_size_bytes(path: Path) -> Optional[int]:
     return total
 
 
+# 串行化真实下载：tqdm 替换是进程级的，并发下载会互相记账
+_MODEL_DOWNLOAD_RUN_LOCK = threading.Lock()
+
+
+def _task_tqdm_class(task: dict[str, Any]) -> type:
+    """构造绑定到指定下载任务的 tqdm 替身类。
+
+    必须是“类”而非工厂函数：tqdm 下载路径以类形态使用它
+    （tqdm.contrib.ensure_lock 调 tqdm_class.get_lock()）——传 lambda 会在
+    真实下载时当场 AttributeError（手工 E2E 实测抓到，桩测试从未覆盖）。
+    hf 侧实例化 kwargs（desc/total/unit…）与记账无关，一律忽略。
+    """
+
+    class _BoundTaskTqdm(_TaskProgress):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(task)
+
+        @staticmethod
+        def get_lock() -> threading.Lock:
+            return threading.Lock()
+
+    return _BoundTaskTqdm
+
+
 def _run_model_download(task_id: str, repo_id: str, revision: Optional[str]) -> None:
-    """后台线程体：真实 snapshot_download（原生断点续传 + etag 校验）。"""
+    """后台线程体：逐文件 hf_hub_download（原生断点续传 + etag 校验 + 字节级进度/取消）。"""
     with _MODEL_TASK_LOCK:
         task = _MODEL_TASKS.get(task_id)
     if task is None:
         return
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download
+        import huggingface_hub.utils.tqdm  # noqa: F401 — 确保子模块已加载（utils.__init__ 用同名类遮蔽了它）
+        import sys as _sys
 
-        snapshot_path = snapshot_download(
-            repo_id=repo_id,
-            revision=revision,
-            tqdm_class=lambda **kwargs: _TaskProgress(task, **kwargs),
-        )
-        resolved = Path(snapshot_path).name  # snapshots/<sha> → 实际 commit
-        size = _dir_size_bytes(Path(snapshot_path))
+        # 注意：`from huggingface_hub.utils import tqdm` 拿到的是同名“类”而非子模块；
+        # _get_progress_bar_context 运行时查的是子模块全局，必须改 sys.modules 里的真身
+        hf_tqdm_module = _sys.modules["huggingface_hub.utils.tqdm"]
+        info = HfApi().model_info(repo_id, revision=revision, files_metadata=True)
+        # 跳过隐藏文件与无体积条目；revision 钉到解析出的 commit，列表与下载之间分支不漂移
+        files = [s for s in (info.siblings or []) if s.size and not s.rfilename.startswith(".")]
+        if not files:
+            raise RuntimeError("仓库没有可下载的权重文件")
+        total = sum(s.size for s in files)
+        with _MODEL_TASK_LOCK:
+            task["totalBytes"] = total
+            task["updatedAt"] = _now_iso()
+
+        bound_cls = _task_tqdm_class(task)
+        snapshot_file: Optional[str] = None
+        last_name = ""
+        with _MODEL_DOWNLOAD_RUN_LOCK:  # tqdm 替换是进程级的：真实下载必须串行
+            original_tqdm = hf_tqdm_module.tqdm
+            hf_tqdm_module.tqdm = bound_cls  # type: ignore[assignment]
+            try:
+                for sibling in files:
+                    last_name = sibling.rfilename
+                    snapshot_file = hf_hub_download(repo_id=repo_id, filename=last_name, revision=info.sha)
+            finally:
+                hf_tqdm_module.tqdm = original_tqdm  # type: ignore[assignment]
+
+        snapshot_path = Path(snapshot_file or "")
+        for _part in last_name.split("/"):  # 从 <sha>/<relpath> 回到 snapshots/<sha> 根
+            snapshot_path = snapshot_path.parent
+        resolved = info.sha
+        size = total
         with _MODEL_TASK_LOCK:
             task["state"] = "completed"
             task["revision"] = resolved
