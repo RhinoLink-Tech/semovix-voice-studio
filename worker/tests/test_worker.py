@@ -78,7 +78,7 @@ class FakeVoiceCloneModel:
         self.calls: list[dict] = []
 
     def generate_voice_clone(self, text, language, ref_audio, ref_text, max_new_tokens=None):
-        self.calls.append({"text": text, "language": language, "ref_audio_rate": ref_audio[1], "ref_text": ref_text, "max_new_tokens": max_new_tokens})
+        self.calls.append({"text": text, "language": language, "ref_audio_rate": ref_audio[1], "ref_audio_len": len(ref_audio[0]), "ref_text": ref_text, "max_new_tokens": max_new_tokens})
         return [np.zeros(2400, dtype=np.float32)], 24000
 
 
@@ -118,11 +118,14 @@ class FakeLibrosaModule:
     """librosa.load 伪实现：返回可配置时长的 16kHz 单声道"""
 
     duration_s = 1.0
+    clone_signal = None  # /tts/voice-clone 走 sr=None 分支：静音压缩测试注入真实波形
 
     @staticmethod
     def load(buf, sr, mono):
         assert mono is True
         if sr is None:
+            if FakeLibrosaModule.clone_signal is not None:
+                return FakeLibrosaModule.clone_signal, 24000
             return np.zeros(24000, dtype=np.float32), 24000
         assert sr == 16000
         return np.zeros(int(16000 * FakeLibrosaModule.duration_s), dtype=np.float32), 16000
@@ -179,7 +182,35 @@ def test_voice_clone_uses_base_engine_and_requires_reference_audio(monkeypatch):
     result = client.post("/tts/voice-clone", files=wav_form(), data={"text": "测试文本", "reference_text": "参考文本", "language": "Chinese"})
     assert result.status_code == 200
     assert result.content[:4] == b"RIFF"
-    assert model.calls == [{"text": "测试文本", "language": "Chinese", "ref_audio_rate": 24000, "ref_text": "参考文本", "max_new_tokens": 480}]
+    assert model.calls == [{"text": "测试文本", "language": "Chinese", "ref_audio_rate": 24000, "ref_audio_len": 24000, "ref_text": "参考文本", "max_new_tokens": 480}]
+
+
+def test_voice_clone_compresses_reference_silence_before_inference(monkeypatch):
+    """静音占比高的参考音频先压缩再进模型：23s 现场录音里 ~19s 静音会被 ICL 学进语速"""
+    clone = worker.EngineState(id="voice_clone")
+    model = FakeVoiceCloneModel()
+    monkeypatch.setattr(worker, "_VOICE_CLONE", clone)
+    monkeypatch.setitem(worker._BUILDERS, "voice_clone", lambda: {"model": model, "device": "cpu", "checkpoint": "fake-base"})
+    monkeypatch.setitem(sys.modules, "librosa", FakeLibrosaModule)
+
+    sr = 24000
+
+    def tone(secs: float) -> np.ndarray:
+        return (np.sin(np.arange(int(sr * secs)) * 0.05) * 0.5).astype(np.float32)
+
+    # 3s 静音 + 1s 语音 + 3s 静音 + 1s 语音 + 5s 静音 = 13s，有效语音只有 2s
+    monkeypatch.setattr(
+        FakeLibrosaModule,
+        "clone_signal",
+        np.concatenate([np.zeros(3 * sr, dtype=np.float32), tone(1.0), np.zeros(3 * sr, dtype=np.float32), tone(1.0), np.zeros(5 * sr, dtype=np.float32)]),
+    )
+
+    assert client.post("/warmup/voice-clone").status_code == 202
+    wait_for_state(clone, "ready")
+    result = client.post("/tts/voice-clone", files=wav_form(), data={"text": "测试文本", "reference_text": "参考文本", "language": "Chinese"})
+    assert result.status_code == 200
+    kept = model.calls[0]["ref_audio_len"]
+    assert int(2.0 * sr) < kept < int(3.0 * sr)  # 13s → ~2.6s：首尾静音剪掉、段间 3s 静音压到 0.3s
 
 
 class GatedBuilder:
@@ -773,3 +804,55 @@ class TestModelDownload:
         del worker._MODEL_TASKS["t-x"]
         progress.update(10)  # 任务已被清理：静默停记（既不抛错也不累计）
         assert task["downloadedBytes"] == 151
+
+
+# ---------------- 克隆参考静音压缩 ----------------
+
+
+def _tone(secs: float, sr: int, amp: float = 0.5) -> np.ndarray:
+    return (np.sin(np.arange(int(sr * secs)) * 0.05) * amp).astype(np.float32)
+
+
+def _longest_silent_run(arr: np.ndarray, floor: float = 0.01) -> int:
+    silent = (np.abs(arr) < floor).astype(np.int8)
+    padded = np.concatenate(([0], silent, [0]))
+    bounds = np.flatnonzero(np.diff(padded))
+    return max((bounds[i + 1] - bounds[i] for i in range(0, bounds.size, 2)), default=0)
+
+
+class TestCompressReferenceSilence:
+    """worker._compress_reference_silence：首尾静音裁掉、内部长停顿压到 keep_pause_s、
+    纯 numpy 不依赖 librosa；压缩结果不足 1s / 全静音 / 过短输入一律原样返回。"""
+
+    def test_trims_edges_and_caps_internal_pauses(self):
+        sr = 16000
+        speech = np.concatenate(
+            [np.zeros(2 * sr, dtype=np.float32), _tone(1, sr), np.zeros(3 * sr, dtype=np.float32), _tone(1, sr), np.zeros(4 * sr, dtype=np.float32)]
+        )
+        out = worker._compress_reference_silence(speech, sr)
+        assert out is not speech
+        assert 2.3 < out.size / sr < 2.95  # 2s 语音 + 0.3s 停顿（帧对齐有余量）
+        # 压缩后最长停顿 ≈ 0.3s 内容 + 两侧 keep 段各 ≤1 帧的过冲（0.3s + 2×2048/16k ≈ 0.56s）
+        assert _longest_silent_run(out) < int(0.6 * sr)
+        # 首尾紧贴有效语音（帧网格允许 ≤1 帧的引导/拖尾静音）
+        assert float(np.sqrt(np.mean(np.square(out[:2500])))) > 0.1
+        assert float(np.sqrt(np.mean(np.square(out[-2500:])))) > 0.1
+
+    def test_natural_pauses_and_clean_edges_untouched(self):
+        sr = 16000
+        speech = np.concatenate([_tone(3, sr), np.zeros(int(0.5 * sr), dtype=np.float32), _tone(3, sr)])
+        out = worker._compress_reference_silence(speech, sr)
+        # 无首尾静音、停顿 ≤ max_pause_s：最多丢帧网格盖不住的尾部（< hop=512）
+        assert speech.size - 512 <= out.size <= speech.size
+
+    def test_compress_result_under_1s_returns_original(self):
+        sr = 16000
+        speech = np.concatenate([_tone(0.1, sr), np.zeros(2 * sr, dtype=np.float32)])
+        assert worker._compress_reference_silence(speech, sr) is speech
+
+    def test_silent_or_tiny_input_passthrough(self):
+        sr = 16000
+        silent = np.zeros(3 * sr, dtype=np.float32)
+        assert worker._compress_reference_silence(silent, sr) is silent  # 全静音：peak=0 原样返回
+        tiny = np.zeros(1000, dtype=np.float32)
+        assert worker._compress_reference_silence(tiny, sr) is tiny  # 短于两帧：不处理

@@ -688,6 +688,59 @@ def _float_to_wav_bytes(wav: Any, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def _compress_reference_silence(
+    speech: Any, sr: int, top_db: float = 40.0, max_pause_s: float = 0.8, keep_pause_s: float = 0.3
+) -> Any:
+    """裁掉克隆参考音频的首尾静音，并把内部长停顿压到 keep_pause_s。
+
+    现场录音常夹着 10s+ 的环境静音，ICL 克隆会把"长时间沉默"一并学进语速，
+    输出被拖长数倍并推高 max_new_tokens 消耗（实测 23s 参考里 ~19s 静音 →
+    42 字文本生成 38.8s）。能量低于峰值 -top_db 的帧视为静音；压缩结果不足
+    1s 时原样返回，避免误伤低音量连续语音。纯 numpy 向量化实现，不依赖
+    librosa（保持 /tts/voice-clone 测试可用 FakeLibrosaModule）。静音切口
+    落在 -topdB 噪声底上，且参考音频随后经过 codec 编码，不做淡入淡出。
+    """
+    import numpy as np
+
+    arr = np.asarray(speech, dtype=np.float32)
+    frame, hop = 2048, 512
+    if sr <= 0 or arr.size < frame * 2:
+        return speech
+    windows = np.lib.stride_tricks.sliding_window_view(arr, frame)[::hop]
+    rms = np.sqrt(np.mean(np.square(windows), axis=1))
+    peak = float(rms.max())
+    if peak <= 0:
+        return speech
+    voiced = rms > peak * (10.0 ** (-top_db / 20.0))
+    if not bool(voiced.any()):
+        return speech
+
+    keep = np.zeros(arr.size, dtype=bool)
+    idx = np.flatnonzero(voiced)
+    for start in idx.tolist():
+        keep[start * hop : start * hop + frame] = True
+
+    padded = np.concatenate(([0], keep.astype(np.int8), [0]))
+    bounds = np.flatnonzero(np.diff(padded))  # 交替出现 True 段的 (start, end)
+    segments = [(int(bounds[i]), int(bounds[i + 1])) for i in range(0, bounds.size, 2)]
+
+    silence_cap = int(round(keep_pause_s * sr))
+    max_pause = int(round(max_pause_s * sr))
+    pieces = []
+    prev_end: Optional[int] = None
+    for seg_start, seg_end in segments:
+        if prev_end is not None:
+            gap = seg_start - prev_end
+            take = gap if gap <= max_pause else min(gap, silence_cap)
+            pieces.append(arr[prev_end : prev_end + take])  # 保留段间自然停顿，超长静音只留开头
+        pieces.append(arr[seg_start:seg_end])
+        prev_end = seg_end
+    result = np.concatenate(pieces) if pieces else arr
+    if result.size < int(round(1.0 * sr)):
+        return speech
+    return result.astype(np.float32, copy=False)
+
+
 @app.post("/tts/qwen")
 def tts_qwen(req: TtsRequest) -> Response:
     _require_ready(_TTS)
@@ -791,6 +844,13 @@ def tts_voice_clone(
         speech, sample_rate = librosa.load(io.BytesIO(audio_bytes), sr=None, mono=True)
         if len(speech) == 0:
             raise ValueError("参考音频没有有效采样")
+        trimmed = _compress_reference_silence(speech, int(sample_rate))
+        if trimmed is not speech and trimmed.size != speech.size:
+            print(
+                f"[worker] 克隆参考静音压缩：{speech.size / sample_rate:.1f}s → {trimmed.size / sample_rate:.1f}s",
+                flush=True,
+            )
+            speech = trimmed
         # 按文本长度推算生成上限（12Hz codec ≈ 每汉字 3-4 token）：静音占比高的参考
         # 音频会把 ICL 生成带进"长时间静音"歧途，默认 max_new_tokens=2048（≈170s 音频）
         # 在慢设备上要跑 20 分钟以上。给足余量后封顶，保证最坏耗时可控、产物不被截断。
