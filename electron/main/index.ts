@@ -168,7 +168,10 @@ async function bootstrap(): Promise<void> {
     return;
   }
   if (context.getSetup().python) {
-    void context.pythonWorkerSupervisor.start();
+    // 冷启动同样先 ensure（P1 #31）：managed 配置注入 venv 解释器，避免回退 PATH python3
+    void context.startConfiguredWorker().catch(error => {
+      log('main', 'error', 'worker-state', `冷启动失败：${error instanceof Error ? error.message : String(error)}`);
+    });
   } else {
     log('main', 'info', 'worker-deferred', '未配置 Python 环境，Worker 暂不启动（等待首次启动向导配置）');
   }

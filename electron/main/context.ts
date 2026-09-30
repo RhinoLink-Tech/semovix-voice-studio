@@ -212,6 +212,17 @@ export class DesktopContext {
     return this.lastDoctor;
   }
 
+  /**
+   * 冷启动路径（bootstrap）：已配置 Worker 时先 ensure（managed 注入 venv 解释器，
+   * ready 短路零开销）再启动。不走这里会让 managed 配置回退 PATH python3——
+   * 机器上任何无 uvicorn 的 python3 都会让 Worker 秒退。
+   */
+  async startConfiguredWorker(): Promise<void> {
+    await this.ensureManagedRuntimeIfConfigured();
+    await this.pythonWorkerSupervisor.start();
+    void this.pushStatus();
+  }
+
   /** 重启 Worker（IPC restart-worker）：managed 模式先 ensure（ready 短路），失败如实抛出 */
   async restartWorkerProcess(): Promise<void> {
     if (!this.setup.python) {
