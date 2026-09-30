@@ -1,7 +1,7 @@
 {
   "name": "semovix-voice-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "type": "module",
   "main": "./electron/build/main.cjs",
   "scripts": {
@@ -18,7 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration --passWithNoTests",
+    "test:integration": "vitest run --project integration",
     "smoke:local": "tsx scripts/smoke-local.ts",
     "build:electron": "node scripts/build-electron.mjs",
     "dev:desktop": "bun run build:electron && node scripts/run-electron.mjs electron/build/main.cjs",
