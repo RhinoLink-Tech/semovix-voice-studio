@@ -347,7 +347,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
               <button
                 onClick={onOpenVoiceModelConfig}
                 className="flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 shadow-sm transition-all hover:bg-cyan-500/20 active:scale-95 sm:w-auto"
-                title="打开语音大模型配置中心"
+                title="进入语音大模型配置页面"
               >
                 <Sliders className="w-3.5 h-3.5 text-cyan-400" />
                 <span>配置语音大模型</span>
@@ -389,9 +389,12 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
         )}
 
         {/* Voice LLM Active Parameter Status Ribbon */}
-        <div 
+        <button
+          type="button"
           onClick={onOpenVoiceModelConfig}
-          className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-neutral-900/80 border border-neutral-800/80 hover:border-cyan-500/40 rounded-xl text-xs transition-colors cursor-pointer group"
+          disabled={!onOpenVoiceModelConfig}
+          aria-label="进入语音大模型配置页面"
+          className="group flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-800/80 bg-neutral-900/80 px-4 py-2.5 text-left text-xs transition-colors hover:border-cyan-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-default"
         >
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-neutral-300">
@@ -433,7 +436,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
             <span>调节大模型参数</span>
             <Sliders className="w-3 h-3 ml-0.5" />
           </div>
-        </div>
+        </button>
 
         {/* 引擎冷启动状态条（P01）：如实展示 cold/loading/ready/error/不可达，绝不伪造“已连接” */}
         {provider === 'qwen3Tts' && catalog.engineState !== 'ready' && (

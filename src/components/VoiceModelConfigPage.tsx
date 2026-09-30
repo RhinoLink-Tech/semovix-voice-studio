@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  X,
+  ArrowLeft,
   Check,
   Play,
   Square,
@@ -37,9 +37,8 @@ import {
 import { useVoiceCatalog } from '../hooks/useVoiceCatalog';
 import { getAudioContext } from '../utils/audioEngine';
 
-interface VoiceModelConfigModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface VoiceModelConfigPageProps {
+  onBack: () => void;
   onConfigChanged?: (newConfig: VoiceModelConfig) => void;
   /** P1 #33：跳到模型管理页（下载/删除/版本切换） */
   onOpenModels?: () => void;
@@ -64,6 +63,18 @@ const MODEL_SETUP_NOTES: Record<string, string> = {
   'qwen-local-reasoning': '使用前请启动 Ollama 并拉取 qwen3.5:9b',
 };
 
+const CONFIG_DRAFT_KEY = 'voice-model-config-page-draft';
+
+function getStoredDraft(savedConfig: VoiceModelConfig): VoiceModelConfig {
+  try {
+    const stored = window.sessionStorage.getItem(CONFIG_DRAFT_KEY);
+    if (!stored) return savedConfig;
+    const { saved, draft } = JSON.parse(stored) as { saved?: VoiceModelConfig; draft?: VoiceModelConfig };
+    if (draft && JSON.stringify(saved) === JSON.stringify(savedConfig)) return draft;
+  } catch { /* A private or disabled storage session still permits editing. */ }
+  return savedConfig;
+}
+
 function getDialogueNameError(config: VoiceModelConfig): string | null {
   const first = config.dialogueSpeaker1.name.trim();
   const second = config.dialogueSpeaker2.name.trim();
@@ -74,23 +85,39 @@ function getDialogueNameError(config: VoiceModelConfig): string | null {
   return null;
 }
 
-export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
-  isOpen,
-  onClose,
+export const VoiceModelConfigPage: React.FC<VoiceModelConfigPageProps> = ({
+  onBack,
   onConfigChanged,
   onOpenModels,
 }) => {
-  const [config, setConfig] = useState<VoiceModelConfig>(getVoiceModelConfig());
   const [savedConfig, setSavedConfig] = useState<VoiceModelConfig>(getVoiceModelConfig());
-  const [activeTab, setActiveTab] = useState<ConfigTab>('personas');
+  const [config, setConfig] = useState<VoiceModelConfig>(() => getStoredDraft(savedConfig));
+  const [activeTab, setActiveTab] = useState<ConfigTab>('models');
   const [hasSaved, setHasSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const hasUnsavedChanges = JSON.stringify(config) !== JSON.stringify(savedConfig);
+
+  useEffect(() => {
+    try {
+      if (hasUnsavedChanges) {
+        window.sessionStorage.setItem(CONFIG_DRAFT_KEY, JSON.stringify({ saved: savedConfig, draft: config }));
+      } else {
+        window.sessionStorage.removeItem(CONFIG_DRAFT_KEY);
+      }
+    } catch { /* Keep the editable in-memory draft when storage is unavailable. */ }
+  }, [config, savedConfig, hasUnsavedChanges]);
+
+  const discardAndReturn = () => {
+    try { window.sessionStorage.removeItem(CONFIG_DRAFT_KEY); } catch { /* Continue back navigation. */ }
+    onBack();
+  };
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0;
@@ -107,7 +134,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
     revealActiveTab();
     window.addEventListener('resize', revealActiveTab);
     return () => window.removeEventListener('resize', revealActiveTab);
-  }, [activeTab, isOpen]);
+  }, [activeTab]);
 
   const handleUpdate = <K extends keyof VoiceModelConfig>(key: K, value: VoiceModelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -139,14 +166,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   }>({ status: 'idle' });
 
   useEffect(() => {
-    if (isOpen) {
-      const currentConfig = getVoiceModelConfig();
-      setConfig(currentConfig);
-      setSavedConfig(currentConfig);
-      setHasSaved(false);
-      setSaveError(null);
-      setPreviewError(null);
-    } else {
+    return () => {
       previewRequestIdRef.current += 1;
       diagnosticRequestIdRef.current += 1;
       previewAudioRef.current?.pause();
@@ -154,49 +174,8 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
       previewAudioRef.current = null;
       diagnosticAudioRef.current = null;
       window.speechSynthesis?.cancel();
-      setPreviewingVoiceId(null);
-      setIsPreviewLoading(false);
-      setIsTestingLatency(false);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = requestAnimationFrame(() => dialogRef.current?.focus());
-    const onDialogKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )).filter(element => element.getClientRects().length > 0);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialogRef.current.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        first.focus();
-      }
     };
-    window.addEventListener('keydown', onDialogKeydown);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('keydown', onDialogKeydown);
-      previousFocus?.focus();
-    };
-  }, [isOpen]);
+  }, []);
 
   useEffect(() => {
     previewRequestIdRef.current += 1;
@@ -215,8 +194,6 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
     setIsTestingLatency(false);
     setTestResult({ status: 'idle' });
   }, [config.ttsModel, selection.defaultVoice]);
-
-  if (!isOpen) return null;
 
   const cannotSaveReason = config.ttsModel === 'web-speech-native'
     ? '浏览器系统音色仅支持实时试听，无法生成可保存音频。请在“模型架构”选择 Gemini、Qwen3-TTS 或 Voice Profile。'
@@ -390,9 +367,6 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
       onConfigChanged(normalizedConfig);
     }
     setHasSaved(true);
-    setTimeout(() => {
-      onClose();
-    }, 600);
   };
 
   // Reset the draft only; Cancel must leave the saved configuration intact.
@@ -432,32 +406,27 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 sm:p-4">
-      <div 
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="voice-model-config-title"
-        tabIndex={-1}
-        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl min-w-0 flex-col overflow-hidden rounded-2xl border border-neutral-700/80 bg-neutral-900 text-neutral-100 shadow-2xl sm:max-h-[90dvh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Top Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-800 bg-neutral-950/60 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-4">
+    <section aria-labelledby="voice-model-config-title" className="flex min-h-0 min-w-0 flex-1 flex-col bg-neutral-950 text-neutral-100">
+        {/* Page Header */}
+        <header className="flex items-center justify-between gap-3 border-b border-neutral-800 bg-neutral-900/70 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button type="button" onClick={discardAndReturn} aria-label={hasUnsavedChanges ? '放弃修改并返回工作台' : '返回工作台'} className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-neutral-700 px-2.5 text-neutral-300 transition-colors hover:border-neutral-500 hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden text-xs sm:inline">返回</span>
+            </button>
             <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-500/30 bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 text-cyan-400 sm:flex">
               <Cpu className="w-5 h-5 animate-pulse" />
             </div>
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <h2 id="voice-model-config-title" className="text-sm font-bold text-neutral-100 sm:text-base">语音大模型配置中心</h2>
+                <h1 ref={headingRef} id="voice-model-config-title" tabIndex={-1} className="text-base font-bold text-neutral-100 outline-none sm:text-xl">语音大模型配置中心</h1>
                 <span className={`hidden max-w-full min-w-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] sm:flex ${hasUnsavedChanges ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300'}`}>
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${hasUnsavedChanges ? 'bg-amber-400' : 'bg-cyan-400'}`} />
                   <span className="min-w-0 break-all">{hasUnsavedChanges ? '草稿' : '已保存'} · {config.ttsModel}</span>
                 </span>
               </div>
-              <p className="mt-0.5 hidden text-xs leading-relaxed text-neutral-400 sm:block">
-                配置模型、发音人、声学参数与双人对谈；保存后用于后续生成
+              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                管理语音模型、发音人和生成参数；保存后用于后续生成
               </p>
             </div>
           </div>
@@ -472,28 +441,24 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
               <span className="hidden sm:inline">恢复默认</span>
               <span className="sm:hidden">重置</span>
             </button>
-            <button
-              onClick={onClose}
-              aria-label="关闭大模型配置"
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Navigation Tabs */}
-        <nav ref={tabsRef} aria-label="大模型配置分类" className="flex shrink-0 overflow-x-auto border-b border-neutral-800 bg-neutral-950/40 px-2 text-xs font-medium sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-4 lg:grid-cols-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        {/* Section Navigation */}
+        <nav ref={tabsRef} aria-label="大模型配置分类" className="flex shrink-0 overflow-x-auto border-b border-neutral-800 bg-neutral-900/40 px-2 text-xs font-medium lg:w-52 lg:flex-col lg:gap-1 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5">
+          <span className="hidden px-3 pb-2 text-[11px] font-semibold tracking-wider text-neutral-500 lg:block">配置分类</span>
           {CONFIG_TABS.map(({ id, label, icon: Icon }) => (
             <button
+              type="button"
               key={id}
               data-config-tab={id}
               onClick={() => setActiveTab(id)}
               aria-pressed={activeTab === id}
-              className={`flex min-h-11 min-w-[88px] shrink-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center transition-colors sm:min-w-0 sm:gap-2 ${
+              className={`flex min-h-11 min-w-[88px] shrink-0 items-center justify-center gap-1.5 border-b-2 px-2 py-2 text-center transition-colors lg:w-full lg:min-w-0 lg:justify-start lg:gap-3 lg:rounded-lg lg:border-b-0 lg:border-l-2 lg:px-3 lg:text-left ${
                 activeTab === id
-                  ? 'border-cyan-400 bg-cyan-500/10 font-semibold text-cyan-300'
-                  : 'border-transparent text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                  ? 'border-cyan-400 bg-cyan-500/10 font-semibold text-cyan-300 lg:border-l-cyan-400'
+                  : 'border-transparent text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200 lg:border-l-transparent'
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -502,8 +467,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
           ))}
         </nav>
 
-        {/* Tab Content Body */}
-        <div ref={contentRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 sm:p-6">
+        {/* Section Content */}
+        <div ref={contentRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-6xl space-y-6">
           
           {/* TAB 0: Audio Model Architecture Selection */}
           {activeTab === 'models' && (
@@ -1360,10 +1326,12 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
             </div>
           )}
 
+          </div>
+        </div>
         </div>
 
-        {/* Bottom Footer Actions */}
-        <div className="flex flex-col items-stretch gap-2 border-t border-neutral-800 bg-neutral-950 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 sm:py-4">
+        {/* Persistent Page Actions */}
+        <footer className="flex flex-col items-stretch gap-2 border-t border-neutral-800 bg-neutral-900/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 lg:px-8">
           <div id="config-save-reason" role="status" className={`flex min-w-0 items-start gap-1.5 text-xs leading-relaxed ${saveError ? 'text-rose-200' : cannotSaveReason ? 'text-amber-200' : hasUnsavedChanges ? 'text-amber-300' : 'text-neutral-300'}`}>
             <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${saveError ? 'bg-rose-400' : cannotSaveReason || hasUnsavedChanges ? 'bg-amber-400' : 'bg-emerald-400'}`} />
             <span>
@@ -1378,10 +1346,11 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
 
           <div className="flex w-full shrink-0 items-center gap-3 sm:w-auto">
             <button
-              onClick={onClose}
+              type="button"
+              onClick={discardAndReturn}
               className="shrink-0 rounded-xl border border-neutral-700/80 px-4 py-2 text-xs font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
             >
-              取消
+              {hasUnsavedChanges ? '放弃修改并返回' : '返回工作台'}
             </button>
 
             <button
@@ -1390,7 +1359,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
               aria-describedby={cannotSaveReason ? 'config-save-reason' : undefined}
               className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-lg shadow-cyan-950/50 transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
             >
-              {hasSaved ? (
+              {hasSaved && !hasUnsavedChanges ? (
                 <>
                   <Check className="w-4 h-4" />
                   <span>已保存并生效</span>
@@ -1403,9 +1372,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
               )}
             </button>
           </div>
-        </div>
-
-      </div>
-    </div>
+        </footer>
+    </section>
   );
 };
