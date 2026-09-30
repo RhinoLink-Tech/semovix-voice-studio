@@ -1,0 +1,5 @@
+# 历史摘要（关键节点）
+# command: git -C <semovix-repo> log --follow -M --numstat --name-status -- <path>
+commit_count(rev-list): 2
+8233f23b2bff 2026-09-28T22:13:55+08:00 jinguoxing +/- feat(desktop): wire import/export flows to native file dialogs (P0-A #12)
+e8b43c65b770 2026-09-29T17:57:45+08:00 jinguoxing +/- feat(web): app capability detection bridging desktop and web modes (P1 #38)

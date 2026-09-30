@@ -23,3 +23,6 @@ __pycache__/
 # Golden Path 验收音频证据：WAV 本体不入 git（公开仓库历史保持精简），
 # 由 artifacts/wav-manifest.sha256 哈希锚定；正式打包随 PR-4 release-evidence
 artifacts/**/*.wav
+
+# 来源审查本机路径清单（含绝对路径，禁止提交）
+docs/provenance/**/scan-manifest.local.json

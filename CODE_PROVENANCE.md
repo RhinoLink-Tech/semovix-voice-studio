@@ -2,6 +2,7 @@
 
 > **状态：逐文件人工审查未开始（责任人待指派）。2026-09-30 已完成针对 `debpalash/VoiceStudio` 的全库自动化初筛（记录见下），其结果属于证据，不构成"独立原创"结论。**
 > 由发布基线执行包 PR-1 建立；逐文件结论必须由审查责任人填写，代码模型不得代填"独立原创"或其他未经核实的结论。
+> 2026-09-30 Batch 01（Electron 壳 / 运行时监管 / 原生文件桥，15 文件）自动化证据包已完成，见下方「Batch 01 证据包」；其机器结果同样只是证据。
 
 ## 已确认事实（2026-09-30）
 
@@ -29,6 +30,17 @@
 - 仅覆盖 VoiceStudio 一个来源，未覆盖 npm/PyPI 依赖片段、官方示例等其他第三方来源。
 
 按判定规则，上述结果只作为证据归档；记录表「分类」列的逐文件结论仍由审查责任人填写。
+
+## Batch 01 证据包（2026-09-30，Electron 壳 / 运行时监管 / 原生文件桥）
+
+**状态：自动化证据采集完成；逐文件人工分类未开始（`manual-review.csv` 全部人工字段保持待人工确认 / 待指派 / 未开始）。**
+
+- 范围：`electron/main/`（含 `lib/` 9 文件中的 7 个范围文件）、`electron/preload/preload.ts`、`src/components/desktop/`（3 文件）、`src/desktop/fileDialogs.ts`、`server/lib/safeFs.ts` —— 共 15 文件（P0×7 / P1×8），见 [docs/provenance/batch-01/scope.txt](docs/provenance/batch-01/scope.txt)。
+- 基线：Semovix `c5ebd8d2`（采集分支 audit/code-provenance-batch-01）vs VoiceStudio `08a1592e`（main，完整历史）；采集时间 2026-09-30T07:07:53Z。
+- 脚本：`scripts/provenance/collect_batch01.py` v1.0.0（SHA-256 `808e06fc…c116dfa0`）+ 包装器 + 校验器，仅 Python 标准库；两次连跑输出除时间戳外逐字节一致（manifest 与 similarity-results 均验证）。
+- 机器结果（证据，非结论）：244 对指标比对中 exact/normalized 哈希匹配 0、high-text 0、high-structure 0、独特注释命中 0；独特字面量命中 16 对次（4 文件机械触发 high，逐条为 Electron API 事件名 / dialog 属性 / Tailwind 工具类 / 状态词 / 1 条 data URL 模板字面量）；机器风险 high 4 / medium 0 / low 11 / blocked 0；P0 候选时间顺序全部 voicestudio-first，历史版本无更高相似峰值。
+- 人工重点（机器观察）：`server/lib/safeFs.ts` 与 VS `backend/core/path_security.py` 的命名层相似（`resolveWithin/UnsafePathError` ↔ `resolve_within/UnsafePath`，与其文件头声明的「吸收、独立实现」一致，需逐行对照）；`electron/main/index.ts` 与 VS `blank-window-guard.ts` 有 1 行模板字面量逐字相同。
+- 证据包：[docs/provenance/batch-01/README.md](docs/provenance/batch-01/README.md)（入口）｜[summary.md](docs/provenance/batch-01/summary.md)｜[review-notes.md](docs/provenance/batch-01/review-notes.md)｜[manual-review.csv](docs/provenance/batch-01/manual-review.csv)｜[out-of-scope-follow-up.md](docs/provenance/batch-01/out-of-scope-follow-up.md)。
 
 ## 审查范围（按优先级）
 

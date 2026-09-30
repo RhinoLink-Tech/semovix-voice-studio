@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: backend/services/subprocess_backend.py
+first_commit: 0fc5ea6cf3ad1148dd71671583c153977c3c754f (2026-05-20T06:54:24+05:30)
+pre_semovix_first_commit: cb80cfa1d0fcee49b341498253a742646291527e (2026-09-27T17:55:35+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: fb76cdf33add210a9161e3e14376adf119c8b037 (2026-09-29T14:56:49+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

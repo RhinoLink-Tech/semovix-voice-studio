@@ -1,0 +1,7 @@
+# blame 聚合摘要（非完整 --line-porcelain 输出）
+# command: git -C <semovix-repo> blame --porcelain <commit> -- <path>
+total_lines: 422
+0545af162bb4   422 行 (100%) jinguoxing
+
+连续引入区段（≥10 行，按首次出现顺序，供人工复核）：
+  lines 1-422 (422 行) 0545af162bb4 jinguoxing

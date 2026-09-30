@@ -1,0 +1,8 @@
+# 首次引入提交（--diff-filter=A --follow）
+# command: git -C <semovix-repo> log --follow --diff-filter=A --reverse -- <path>
+path: electron/main/index.ts
+first_add_commit: 8276d67e31ea283a46c354bd423238b11e0ac02e
+first_history_commit: 8276d67e31ea283a46c354bd423238b11e0ac02e
+first_author: jinguoxing <jinguoxing_net@163.com>
+first_authored_at: 2026-09-28T21:46:34+08:00
+subject: feat(desktop): absorb P0-A desktop beta capabilities in Electron shell

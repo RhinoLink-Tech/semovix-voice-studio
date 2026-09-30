@@ -1,0 +1,8 @@
+# blame 聚合摘要（非完整 --line-porcelain 输出）
+# command: git -C <semovix-repo> blame --porcelain <commit> -- <path>
+total_lines: 127
+8233f23b2bff   124 行 (98%) jinguoxing
+e8b43c65b770     3 行 (2%) jinguoxing
+
+连续引入区段（≥10 行，按首次出现顺序，供人工复核）：
+  lines 13-127 (115 行) 8233f23b2bff jinguoxing

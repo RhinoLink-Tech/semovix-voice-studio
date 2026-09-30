@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: electron/src/main/runtime-download.ts
+first_commit: 2f12db10c34328ef09a11b019635febd44420bb6 (2026-09-20T17:02:35+05:30)
+pre_semovix_first_commit: 0f78dc91e06b1078a1bd403a2453c989cc6784b3 (2026-09-20T18:54:00+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: 0545af162bb4a7bc9bef0d760de819f740c6110f (2026-09-29T17:15:39+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

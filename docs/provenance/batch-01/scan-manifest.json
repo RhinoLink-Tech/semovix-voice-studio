@@ -1,0 +1,74 @@
+{
+  "script_version": "1.0.0",
+  "script_sha256": "808e06fc59e6ff585d61230c44ae759744aed71943200e93b37d7b61c116dfa0",
+  "generated_at_utc": "2026-09-30T07:07:53Z",
+  "subject": {
+    "repo": "<semovix-repo>",
+    "ref": "HEAD",
+    "branch": "audit/code-provenance-batch-01",
+    "commit": "c5ebd8d220046afd52df34e3ec4982f3fae887b3",
+    "worktree_clean": true,
+    "remote": [
+      "jinguoxing\tgit@github-jinguoxing:jinguoxing/semovix-voice.git (fetch)",
+      "jinguoxing\tgit@github-jinguoxing:jinguoxing/semovix-voice.git (push)",
+      "origin\tgit@github-work:RhinoLink-Tech/semovix-voice-studio.git (fetch)",
+      "origin\tgit@github-work:RhinoLink-Tech/semovix-voice-studio.git (push)"
+    ]
+  },
+  "comparison": {
+    "repo": "<voicestudio-repo>",
+    "ref": "HEAD",
+    "branch": "main",
+    "commit": "08a1592e3cb9b4c36beef5fa3185ec2313bb1fea",
+    "worktree_clean": true,
+    "history_complete": true,
+    "remote": [
+      "origin\thttps://github.com/debpalash/VoiceStudio.git (fetch)",
+      "origin\thttps://github.com/debpalash/VoiceStudio.git (push)"
+    ]
+  },
+  "scope_file_count": 15,
+  "scope": [
+    "electron/main/index.ts",
+    "electron/main/context.ts",
+    "electron/main/ipc.ts",
+    "electron/main/lib/supervisors.ts",
+    "electron/main/lib/managedRuntime.ts",
+    "electron/main/lib/doctorRunner.ts",
+    "electron/main/lib/ports.ts",
+    "electron/main/lib/orphanReaper.ts",
+    "electron/main/lib/runtimeStatus.ts",
+    "electron/preload/preload.ts",
+    "src/desktop/fileDialogs.ts",
+    "server/lib/safeFs.ts",
+    "src/components/desktop/DesktopGate.tsx",
+    "src/components/desktop/DesktopSetupWizard.tsx",
+    "src/components/desktop/RuntimeStatusCenter.tsx"
+  ],
+  "thresholds": {
+    "high_text_raw_line_sequence": 0.7,
+    "high_structure_idnorm_5gram_jaccard": 0.55,
+    "distinctive_literal_min_chars": 10,
+    "distinctive_comment_min_chars": 15
+  },
+  "normalization": {
+    "raw": "原始字节 / 原始行",
+    "normalized": "UTF-8 去 BOM、LF、行内空白压缩为单空格（含缩进）",
+    "identifier_normalized": "注释单独提取；字符串→<STR>；数字→<NUM>；非关键字/非 API 标识符→<ID>；关键字/运算符/固定 API 名保留",
+    "note": "identifier-normalized 视图对框架样板（Electron 初始化、tsconfig 等）可能产生误报，需人工确认"
+  },
+  "sorting": {
+    "similarity-results.csv": "risk severity desc, identifier-normalized similarity desc, raw similarity desc, semovix_path asc, voicestudio_path asc"
+  },
+  "outputs": [
+    "counterpart-map.csv",
+    "evidence/",
+    "file-history.csv",
+    "file-inventory.csv",
+    "manual-review.csv",
+    "scan-manifest.json",
+    "scope.txt",
+    "similarity-results.csv"
+  ],
+  "blocked": []
+}

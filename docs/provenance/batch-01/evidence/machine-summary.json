@@ -1,0 +1,635 @@
+{
+  "blocked": [],
+  "comparison_commit": "08a1592e3cb9b4c36beef5fa3185ec2313bb1fea",
+  "existing_file_count": 15,
+  "flag_counts": {
+    "distinctive-literal-match": 16,
+    "low-signal": 89,
+    "not-comparable": 139
+  },
+  "generated_at_utc": "2026-09-30T07:07:53Z",
+  "history_check": {
+    "electron/main/index.ts": [
+      {
+        "any_similarity_signal": true,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T11:26:48-07:00",
+        "vs_pre_semovix_commit": "d6348b56f2cc6ade2d4539e800fe253318353df1"
+      },
+      {
+        "any_similarity_signal": true,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/blank-window-guard.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/preload/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/i18n/index.ts",
+        "vs_pre_semovix_at": "2026-09-23T17:40:46+05:30",
+        "vs_pre_semovix_commit": "58a306fddd0139cb3fcfc4948189a3bb5b4a5ae3"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/routes/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-26T11:46:37-07:00",
+        "vs_first_commit": "29c8a132604bd6befaf8dd3355862a2977432d54",
+        "vs_path": "electron/src/shared/i18n/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T11:46:37-07:00",
+        "vs_pre_semovix_commit": "29c8a132604bd6befaf8dd3355862a2977432d54"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-26T11:46:37-07:00",
+        "vs_first_commit": "29c8a132604bd6befaf8dd3355862a2977432d54",
+        "vs_path": "electron/src/shared/store/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T11:46:37-07:00",
+        "vs_pre_semovix_commit": "29c8a132604bd6befaf8dd3355862a2977432d54"
+      }
+    ],
+    "electron/main/ipc.ts": [
+      {
+        "any_similarity_signal": true,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/ipc.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/save-filters.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      }
+    ],
+    "electron/main/lib/managedRuntime.ts": [
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T17:15:39+08:00",
+        "semovix_first_commit": "0545af162bb4a7bc9bef0d760de819f740c6110f",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/backend-download.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T17:15:39+08:00",
+        "semovix_first_commit": "0545af162bb4a7bc9bef0d760de819f740c6110f",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-20T17:02:35+05:30",
+        "vs_first_commit": "2f12db10c34328ef09a11b019635febd44420bb6",
+        "vs_path": "electron/src/main/runtime-download.ts",
+        "vs_pre_semovix_at": "2026-09-20T18:54:00+05:30",
+        "vs_pre_semovix_commit": "0f78dc91e06b1078a1bd403a2453c989cc6784b3"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T17:15:39+08:00",
+        "semovix_first_commit": "0545af162bb4a7bc9bef0d760de819f740c6110f",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/setup-progress.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      }
+    ],
+    "electron/main/lib/supervisors.ts": [
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/backend.ts",
+        "vs_pre_semovix_at": "2026-09-27T18:02:08+05:30",
+        "vs_pre_semovix_commit": "19017013408a29e3e64cb1d224a9c35e4d8df8cb"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/runtime-project.ts",
+        "vs_pre_semovix_at": "2026-09-27T06:31:23+05:30",
+        "vs_pre_semovix_commit": "fe42376d3c76399861de129b9d084796a0d089a1"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-07-16T19:28:42+05:30",
+        "vs_first_commit": "e6b1179001764488c5b6944655d81ed0526e2659",
+        "vs_path": "scripts/dev-backend.mjs",
+        "vs_pre_semovix_at": "2026-09-08T22:45:44-04:00",
+        "vs_pre_semovix_commit": "2127aa771653628602a9d2f6b2cb16a9f67802ec"
+      }
+    ],
+    "electron/preload/preload.ts": [
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/preload/index.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T21:46:34+08:00",
+        "semovix_first_commit": "8276d67e31ea283a46c354bd423238b11e0ac02e",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/ipc.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      }
+    ],
+    "server/lib/safeFs.ts": [
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-08-09T21:16:55Z",
+        "vs_first_commit": "3e6679c03e7c370b3c7b8cb626b4ba17e22707d4",
+        "vs_path": "backend/core/path_security.py",
+        "vs_pre_semovix_at": "2026-08-20T06:08:28+05:30",
+        "vs_pre_semovix_commit": "3b64d317ae06d7c75bb0d0c2c5219098b9f12506"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/watch-folders.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-04-18T17:20:19+05:30",
+        "vs_first_commit": "67328d04fec71c4986ef866f994d5dd48c3ccb6b",
+        "vs_path": "backend/api/routers/dub_export.py",
+        "vs_pre_semovix_at": "2026-09-24T17:28:25+09:00",
+        "vs_pre_semovix_commit": "c7860bcac8e07497ecbf42b90670ab7c6b0b0bdb"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-04-18T17:20:19+05:30",
+        "vs_first_commit": "67328d04fec71c4986ef866f994d5dd48c3ccb6b",
+        "vs_path": "backend/api/routers/generation.py",
+        "vs_pre_semovix_at": "2026-09-24T22:23:00+05:30",
+        "vs_pre_semovix_commit": "1947bf76531dcb6b1e4b3264e4e13195e962a4eb"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-04-14T04:00:38+05:30",
+        "vs_first_commit": "3a8adf5dd45cb557d8e08acaf753f41fa37aca52",
+        "vs_path": "backend/main.py",
+        "vs_pre_semovix_at": "2026-04-14T04:00:38+05:30",
+        "vs_pre_semovix_commit": "3a8adf5dd45cb557d8e08acaf753f41fa37aca52"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-04-21T18:32:25+05:30",
+        "vs_first_commit": "52d68d05dc568607a2ac506d858601b1dd992674",
+        "vs_path": "backend/services/asr_backend.py",
+        "vs_pre_semovix_at": "2026-09-27T18:33:51+05:30",
+        "vs_pre_semovix_commit": "d97788e51ccd52f8acf85cd18a840c51df9053ff"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-04-21T18:32:25+05:30",
+        "vs_first_commit": "52d68d05dc568607a2ac506d858601b1dd992674",
+        "vs_path": "backend/services/incremental.py",
+        "vs_pre_semovix_at": "2026-07-14T01:08:50+05:30",
+        "vs_pre_semovix_commit": "283ef36b13bb0b0453b15b1e269305db0aaa6cae"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-07-01T18:55:59+05:30",
+        "vs_first_commit": "29269b9cf09d50746c48ae8b1a9c0b8d0bd05a94",
+        "vs_path": "backend/services/llm_providers.py",
+        "vs_pre_semovix_at": "2026-09-20T19:38:03+05:30",
+        "vs_pre_semovix_commit": "676e7ee311a8ad63fcb37d25b5fcc4a5ea12672c"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-07-11T12:22:49+05:30",
+        "vs_first_commit": "5562aa16a732f778f6aaa6d7e1c3aac39c221fd7",
+        "vs_path": "backend/services/media_tools.py",
+        "vs_pre_semovix_at": "2026-09-20T10:23:44+05:30",
+        "vs_pre_semovix_commit": "963bf230df5255ab572b4496c00f81d8a8a5179b"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-07-12T01:13:35+05:30",
+        "vs_first_commit": "ff56865cf768dc4a64f7001aacd7e7b9b57460ec",
+        "vs_path": "backend/services/sidecar_install.py",
+        "vs_pre_semovix_at": "2026-09-20T20:22:18+05:30",
+        "vs_pre_semovix_commit": "87c5097d6b239e5ea4f253b7a2d192a588999a4b"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-05-20T06:54:24+05:30",
+        "vs_first_commit": "0fc5ea6cf3ad1148dd71671583c153977c3c754f",
+        "vs_path": "backend/services/subprocess_backend.py",
+        "vs_pre_semovix_at": "2026-09-27T17:55:35+05:30",
+        "vs_pre_semovix_commit": "cb80cfa1d0fcee49b341498253a742646291527e"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-29T14:56:49+08:00",
+        "semovix_first_commit": "fb76cdf33add210a9161e3e14376adf119c8b037",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-05-20T05:10:37+05:30",
+        "vs_first_commit": "4a6b978df97b5cc12f68e94ab4130addf878c8dc",
+        "vs_path": "backend/services/token_resolver.py",
+        "vs_pre_semovix_at": "2026-09-07T15:03:12+05:30",
+        "vs_pre_semovix_commit": "8428517d95fc74e372a6c1047da4a10888b4da2e"
+      }
+    ],
+    "src/desktop/fileDialogs.ts": [
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/ipc.ts",
+        "vs_pre_semovix_at": "2026-09-26T01:52:38+05:30",
+        "vs_pre_semovix_commit": "a2f5630bac980122a652e7258dd17063b2c20a0f"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/main/save-filters.ts",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-06-14T01:43:24+05:30",
+        "vs_first_commit": "e0b59f3984b70910a40e8c88eb62c407441172da",
+        "vs_path": "docs/specs/longform/33-cue-sheet-export.md",
+        "vs_pre_semovix_at": "2026-08-07T01:30:58+05:30",
+        "vs_pre_semovix_commit": "5cab8e01495e318e0e51820e7170467c9e351e79"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/components/waveform-player.tsx",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/clone/persona-export.tsx",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/clone/profile-preview.tsx",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/clone/reference-panel.tsx",
+        "vs_pre_semovix_at": "2026-09-23T16:35:45+05:30",
+        "vs_pre_semovix_commit": "ade8e44c8525dc7f3813f13be059f53c29b19d0a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/dub/dub-export-panel.tsx",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/gallery/trim-audio.tsx",
+        "vs_pre_semovix_at": "2026-09-26T11:46:37-07:00",
+        "vs_pre_semovix_commit": "29c8a132604bd6befaf8dd3355862a2977432d54"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-23T07:17:08+05:30",
+        "vs_first_commit": "09ec78c7115d98ca033ac048bd9af0008e524e5f",
+        "vs_path": "electron/src/renderer/src/features/integrations/twilio-setup.test.tsx",
+        "vs_pre_semovix_at": "2026-09-23T17:40:46+05:30",
+        "vs_pre_semovix_commit": "58a306fddd0139cb3fcfc4948189a3bb5b4a5ae3"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-23T07:17:08+05:30",
+        "vs_first_commit": "09ec78c7115d98ca033ac048bd9af0008e524e5f",
+        "vs_path": "electron/src/renderer/src/features/integrations/twilio-setup.tsx",
+        "vs_pre_semovix_at": "2026-09-23T17:40:46+05:30",
+        "vs_pre_semovix_commit": "58a306fddd0139cb3fcfc4948189a3bb5b4a5ae3"
+      },
+      {
+        "any_similarity_signal": false,
+        "semovix_first_at": "2026-09-28T22:13:55+08:00",
+        "semovix_first_commit": "8233f23b2bff51602df72fb755dadbf7bb82f246",
+        "time_order": "voicestudio-first",
+        "vs_first_at": "2026-09-14T10:10:11-07:00",
+        "vs_first_commit": "f832d616f7eb5ee8028b5c8924249a552638634a",
+        "vs_path": "electron/src/renderer/src/features/longform/book-settings.tsx",
+        "vs_pre_semovix_at": "2026-09-14T10:10:11-07:00",
+        "vs_pre_semovix_commit": "f832d616f7eb5ee8028b5c8924249a552638634a"
+      }
+    ]
+  },
+  "missing_file_count": 0,
+  "pair_count": 244,
+  "per_file": {
+    "electron/main/context.ts": {
+      "candidates": 1,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 3,
+      "max_idnorm": 0.1438,
+      "max_raw": 0.0476,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/index.ts": {
+      "candidates": 7,
+      "distinctive_comments": 0,
+      "distinctive_literals": 5,
+      "max_block": 3,
+      "max_idnorm": 0.2144,
+      "max_raw": 0.0741,
+      "observation": "存在高风险匹配",
+      "risk": "high"
+    },
+    "electron/main/ipc.ts": {
+      "candidates": 2,
+      "distinctive_comments": 0,
+      "distinctive_literals": 2,
+      "max_block": 3,
+      "max_idnorm": 0.1739,
+      "max_raw": 0.0799,
+      "observation": "存在高风险匹配",
+      "risk": "high"
+    },
+    "electron/main/lib/doctorRunner.ts": {
+      "candidates": 1,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 5,
+      "max_idnorm": 0.1588,
+      "max_raw": 0.0401,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/lib/managedRuntime.ts": {
+      "candidates": 3,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 3,
+      "max_idnorm": 0.1139,
+      "max_raw": 0.0384,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/lib/orphanReaper.ts": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 5,
+      "max_idnorm": 0.101,
+      "max_raw": 0.1884,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/lib/ports.ts": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 4,
+      "max_idnorm": 0.1395,
+      "max_raw": 0.1127,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/lib/runtimeStatus.ts": {
+      "candidates": 2,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 3,
+      "max_idnorm": 0.0929,
+      "max_raw": 0.0845,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/main/lib/supervisors.ts": {
+      "candidates": 3,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 5,
+      "max_idnorm": 0.1724,
+      "max_raw": 0.049,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "electron/preload/preload.ts": {
+      "candidates": 2,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 3,
+      "max_idnorm": 0.1742,
+      "max_raw": 0.0574,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "server/lib/safeFs.ts": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 2,
+      "max_idnorm": 0.0557,
+      "max_raw": 0.0659,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    },
+    "src/components/desktop/DesktopGate.tsx": {
+      "candidates": 1,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 2,
+      "max_idnorm": 0.0549,
+      "max_raw": 0.0279,
+      "observation": "未发现直接逐字复用信号",
+      "risk": "low"
+    },
+    "src/components/desktop/DesktopSetupWizard.tsx": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 1,
+      "max_block": 6,
+      "max_idnorm": 0.1143,
+      "max_raw": 0.0691,
+      "observation": "存在高风险匹配",
+      "risk": "high"
+    },
+    "src/components/desktop/RuntimeStatusCenter.tsx": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 2,
+      "max_block": 4,
+      "max_idnorm": 0.162,
+      "max_raw": 0.0605,
+      "observation": "存在高风险匹配",
+      "risk": "high"
+    },
+    "src/desktop/fileDialogs.ts": {
+      "candidates": 12,
+      "distinctive_comments": 0,
+      "distinctive_literals": 0,
+      "max_block": 3,
+      "max_idnorm": 0.1116,
+      "max_raw": 0.0662,
+      "observation": "存在通用框架样板",
+      "risk": "low"
+    }
+  },
+  "scope_file_count": 15,
+  "script_version": "1.0.0",
+  "subject_commit": "c5ebd8d220046afd52df34e3ec4982f3fae887b3"
+}

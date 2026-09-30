@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: scripts/dev-backend.mjs
+first_commit: e6b1179001764488c5b6944655d81ed0526e2659 (2026-07-16T19:28:42+05:30)
+pre_semovix_first_commit: 2127aa771653628602a9d2f6b2cb16a9f67802ec (2026-09-08T22:45:44-04:00)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: 8276d67e31ea283a46c354bd423238b11e0ac02e (2026-09-28T21:46:34+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入
