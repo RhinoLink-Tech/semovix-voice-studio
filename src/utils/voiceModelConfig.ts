@@ -84,13 +84,15 @@ export function getVoiceModelConfig(): VoiceModelConfig {
   }
 }
 
-export function saveVoiceModelConfig(config: VoiceModelConfig): void {
+export function saveVoiceModelConfig(config: VoiceModelConfig): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     // Dispatch custom event for reactive updates across components
     window.dispatchEvent(new CustomEvent('voice-model-config-updated', { detail: config }));
+    return true;
   } catch (e) {
     console.error('Failed to save voice model config', e);
+    return false;
   }
 }
 
@@ -150,12 +152,12 @@ export const AVAILABLE_TTS_MODELS: ModelOptionInfo[] = [
   },
   {
     id: 'web-speech-native',
-    name: 'Web Audio / Local Browser Speech Engine',
-    provider: 'Client-Side Offline',
-    description: '本地离线备用合成器：无需 API 密钥与外部网络，直接调用终端系统原生合成与声学 DSP 发生器。',
-    tag: '离线零延迟兜底',
-    badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-    capabilities: ['100% 离线可用', '零网络消耗', '系统级发音人支持'],
+    name: '浏览器系统音色试听',
+    provider: '设备本地语音服务',
+    description: '调用当前设备的系统语音服务实时朗读样音。此模式不会输出音频文件，无法保存为素材或用于双人对谈。可在发音人页面试听系统音色。',
+    tag: '仅实时试听',
+    badgeClass: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    capabilities: ['设备本地试听', '系统发音人', '不输出音频文件'],
   },
 ];
 

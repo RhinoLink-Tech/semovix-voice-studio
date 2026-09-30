@@ -7,7 +7,7 @@
  * MCP 工具错误）转译，绝不吞错或改码。
  */
 import crypto from 'crypto';
-import { resolveTtsAdapter } from '../engines/tts';
+import { resolveTtsAdapter, type DialoguePacing } from '../engines/tts';
 import { hasGeminiApiKey } from '../engines/geminiClient';
 import { EngineValidationError, describeError } from '../engines/errors';
 import { captureModelIdentity, WorkerNotReadyError, type WorkerModelIdentity } from '../engines/qwenWorker';
@@ -33,6 +33,7 @@ export interface SpeechPipelineRequest {
   emotion?: string;
   speed?: number;
   multiSpeaker?: boolean;
+  pacing?: DialoguePacing;
   speakers?: { speaker: string; voiceName: string }[];
   systemInstruction?: string;
   temperature?: number;
@@ -83,6 +84,9 @@ export async function runSpeech(request: SpeechPipelineRequest): Promise<SpeechP
     ttsModel = 'gemini-2.5-flash-preview-tts',
     source,
   } = request;
+  const pacing: DialoguePacing = request.pacing === 'tight' || request.pacing === 'relaxed'
+    ? request.pacing
+    : 'natural';
 
   if (!text || typeof text !== 'string') {
     throw new PipelineHttpError(400, 'Text prompt is required.', 'invalid_request');
@@ -100,6 +104,14 @@ export async function runSpeech(request: SpeechPipelineRequest): Promise<SpeechP
 
   if (adapter.requiresApiKey && !hasGeminiApiKey()) {
     throw new PipelineHttpError(400, 'Gemini API key is not configured.', 'engine_not_configured', { engine: adapter.id });
+  }
+
+  if (multiSpeaker && adapter.id === 'voice-profile') {
+    throw new PipelineHttpError(400, 'Voice Profile 当前只支持单人合成；双人对谈请选择 Gemini 或 Qwen3-TTS。', 'unsupported_multi_speaker', { engine: adapter.id });
+  }
+
+  if (multiSpeaker && (!Array.isArray(speakers) || speakers.length < 2)) {
+    throw new PipelineHttpError(400, '双人对谈需要提供两个说话人及其音色。', 'invalid_dialogue_speakers');
   }
 
   // P01 冷启动状态机：不做 isAvailable() 预检（cold 状态会被直接 503、模型永远没机会加载）。
@@ -122,6 +134,7 @@ export async function runSpeech(request: SpeechPipelineRequest): Promise<SpeechP
       speed,
       temperature,
       multiSpeaker,
+      pacing,
       speakers,
     });
   } catch (e: any) {
@@ -148,7 +161,7 @@ export async function runSpeech(request: SpeechPipelineRequest): Promise<SpeechP
       engine: adapter.id,
       model: ttsModel,
       voice: voiceName,
-      params: { emotion, speed, temperature, multiSpeaker, source },
+      params: { emotion, speed, temperature, multiSpeaker, ...(multiSpeaker ? { pacing } : {}), source },
       input_text: inputText,
       status: 'failed',
       error: described.slice(0, 500),
@@ -172,7 +185,7 @@ export async function runSpeech(request: SpeechPipelineRequest): Promise<SpeechP
     engine: adapter.id,
     model: ttsModel,
     voice: result.voiceName,
-    params: { emotion, speed, temperature, multiSpeaker, fileSize: size, source },
+    params: { emotion, speed, temperature, multiSpeaker, ...(multiSpeaker ? { pacing } : {}), fileSize: size, source },
     input_text: inputText,
     output_file: `${genId}.wav`,
     duration_sec: result.duration,

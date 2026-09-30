@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Radio,
   Sparkles,
@@ -29,6 +29,33 @@ interface AudioTTSStudioProps {
   onOpenVoiceModelConfig?: () => void;
 }
 
+function dialogueNames(config: VoiceModelConfig): [string, string] {
+  return [config.dialogueSpeaker1?.name.trim() || '主持人', config.dialogueSpeaker2?.name.trim() || '嘉宾'];
+}
+
+function sampleDialogue(config: VoiceModelConfig): string {
+  const [first, second] = dialogueNames(config);
+  return `${first}: 欢迎收听前沿探索，今天我们聊聊生成式音频技术。\n${second}: 是的！如今声音合成不仅更加拟真，更赋予了创作者无限的想象空间。`;
+}
+
+function dialogueScriptError(text: string, config: VoiceModelConfig): string | null {
+  const [first, second] = dialogueNames(config);
+  if (first === second) return '两个说话人的角色名称不能相同。请先在语音大模型配置中修改。';
+  if ([first, second].some(name => !/^[^：:\r\n]{1,20}$/.test(name))) {
+    return '角色名称需为 1–20 个字符，且不能包含冒号或换行。请先在语音大模型配置中修改。';
+  }
+  const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  for (const [index, line] of lines.entries()) {
+    const match = line.match(/^([^：:]{1,20})[：:]\s*(.*)$/);
+    if (!match) return `第 ${index + 1} 行请使用「角色名: 台词」格式。`;
+    if (!match[2].trim()) return `第 ${index + 1} 行的台词不能为空。`;
+    if (match[1].trim() !== first && match[1].trim() !== second) {
+      return `第 ${index + 1} 行的角色「${match[1].trim()}」与当前配置不一致；请使用「${first}」或「${second}」。`;
+    }
+  }
+  return null;
+}
+
 export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
   folders,
   onSaveToLibrary,
@@ -44,10 +71,15 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
   // Dialogue mode state
   const [speaker1Voice, setSpeaker1Voice] = useState<string | null>(null);
   const [speaker2Voice, setSpeaker2Voice] = useState<string | null>(null);
-  const [dialogueText, setDialogueText] = useState(
-`主持人: 欢迎收听前沿探索，今天我们聊聊生成式音频技术。
-嘉宾: 是的！如今声音合成不仅更加拟真，更赋予了创作者无限的想象空间。`
-  );
+  const [dialogueText, setDialogueText] = useState(() => sampleDialogue(modelConfig));
+  const previousDialogueSample = useRef(sampleDialogue(modelConfig));
+
+  // 角色改名时只同步未改动的示例剧本，不覆盖用户手写的台词。
+  useEffect(() => {
+    const nextSample = sampleDialogue(modelConfig);
+    setDialogueText(current => current === previousDialogueSample.current ? nextSample : current);
+    previousDialogueSample.current = nextSample;
+  }, [modelConfig.dialogueSpeaker1?.name, modelConfig.dialogueSpeaker2?.name]);
 
   // Sync with global voice model configuration updates
   useEffect(() => {
@@ -64,6 +96,10 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
   // P01 跨 Provider 音色（硬性约束 #5/#6）：目录按当前 TTS 模型的 provider 解析，
   // Gemini 静态目录 / Qwen 走状态接口+自动预热轮询 / WebSpeech 系统音色
   const provider = providerForTtsModel(modelConfig.ttsModel);
+  const dialogueAvailable = provider === 'gemini' || provider === 'qwen3Tts';
+  useEffect(() => {
+    if (!dialogueAvailable) setMode('single');
+  }, [dialogueAvailable]);
   const catalog = useVoiceCatalog(provider);
   const selection = useMemo(
     () => normalizeVoiceSelection(modelConfig, provider, catalog.voices),
@@ -83,6 +119,8 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
   const canGenerate =
     !selection.catalogUnavailable &&
     !qwenLoading &&
+    provider !== 'webSpeech' &&
+    (mode !== 'dialogue' || dialogueAvailable) &&
     !!(mode === 'single' ? text.trim() : dialogueText.trim());
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -100,7 +138,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
     engine?: string;
     ttsModel?: string;
     generationId?: string;
-    params?: { speed?: number; temperature?: number; emotion?: string; mode?: string };
+    params?: { speed?: number; temperature?: number; emotion?: string; mode?: string; pacing?: VoiceModelConfig['pacing'] };
   } | null>(null);
 
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
@@ -137,6 +175,21 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
   ];
 
   const handleGenerate = async () => {
+    if (provider === 'webSpeech') {
+      setGenerationError('浏览器系统音色目前只供实时预览，不会生成可保存的音频；请在配置中心选择 Gemini、Qwen3-TTS 或 Voice Profile。');
+      return;
+    }
+    if (mode === 'dialogue' && !dialogueAvailable) {
+      setGenerationError('当前引擎不支持双人对谈；请选择 Gemini 或 Qwen3-TTS。');
+      return;
+    }
+    if (mode === 'dialogue') {
+      const scriptError = dialogueScriptError(dialogueText, modelConfig);
+      if (scriptError) {
+        setGenerationError(scriptError);
+        return;
+      }
+    }
     // 目录未就绪时不得猜测音色 ID（硬性约束 #5/#6：宁可不生成，不发送外来 ID）
     if (!selectedVoice || (mode === 'dialogue' && (!speaker1Voice || !speaker2Voice))) {
       setGenerationError('当前引擎音色目录未就绪，无法确定音色 ID。请等待引擎加载完成（或先启动 Worker），也可切换到 Gemini 引擎。');
@@ -161,12 +214,13 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
           emotion: selectedEmotion,
           speed: modelConfig.speed,
           temperature: modelConfig.temperature,
+          pacing: modelConfig.pacing,
           systemInstruction: modelConfig.customSystemInstruction,
           ttsModel: modelConfig.ttsModel,
           multiSpeaker: mode === 'dialogue',
           speakers: [
-            { speaker: modelConfig.dialogueSpeaker1?.name || '主持人', voiceName: speaker1Voice },
-            { speaker: modelConfig.dialogueSpeaker2?.name || '嘉宾', voiceName: speaker2Voice },
+            { speaker: dialogueNames(modelConfig)[0], voiceName: speaker1Voice },
+            { speaker: dialogueNames(modelConfig)[1], voiceName: speaker2Voice },
           ],
         }),
       });
@@ -199,6 +253,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
           temperature: modelConfig.temperature,
           emotion: selectedEmotion,
           mode,
+          ...(mode === 'dialogue' ? { pacing: modelConfig.pacing } : {}),
         },
       });
       setAssetTitle(defaultTitle);
@@ -312,9 +367,11 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
               </button>
               <button
                 onClick={() => setMode('dialogue')}
+                disabled={!dialogueAvailable}
+                title={!dialogueAvailable ? '双人对谈仅支持 Gemini 和 Qwen3-TTS' : undefined}
                 className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 font-medium transition-all ${
                   mode === 'dialogue' ? 'bg-indigo-600 text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
-                }`}
+                } disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>双人播客对谈</span>
@@ -322,6 +379,14 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
             </div>
           </div>
         </div>
+
+        {!dialogueAvailable && (
+          <p className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs text-neutral-400">
+            {provider === 'webSpeech'
+              ? '浏览器系统音色当前无法生成可保存的音频。请在配置中心切换到 Gemini、Qwen3-TTS 或 Voice Profile。'
+              : '当前 Voice Profile 支持单人合成；双人对谈请切换到 Gemini 或 Qwen3-TTS。'}
+          </p>
+        )}
 
         {/* Voice LLM Active Parameter Status Ribbon */}
         <div 
@@ -355,6 +420,13 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
               <span className="text-neutral-400">声学封装:</span>
               <span className="font-mono text-emerald-400">24kHz WAV</span>
             </div>
+
+            {mode === 'dialogue' && (
+              <div className="flex items-center gap-1 text-neutral-300">
+                <span className="text-neutral-400">对谈节奏:</span>
+                <span className="text-neutral-200">{{ tight: '紧凑', natural: '自然', relaxed: '舒缓' }[modelConfig.pacing] || '自然'}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1 text-[11px] text-cyan-400 group-hover:text-cyan-300 font-medium">
@@ -450,7 +522,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-4">
               <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block mb-2">
-                角色 1 (主持人) 声线
+                角色 1 ({dialogueNames(modelConfig)[0]}) 声线
               </span>
               <select
                 value={speaker1Voice ?? ''}
@@ -467,7 +539,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
 
             <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-4">
               <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block mb-2">
-                角色 2 (嘉宾) 声线
+                角色 2 ({dialogueNames(modelConfig)[1]}) 声线
               </span>
               <select
                 value={speaker2Voice ?? ''}
@@ -521,7 +593,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
             rows={5}
             value={mode === 'single' ? text : dialogueText}
             onChange={(e) => mode === 'single' ? setText(e.target.value) : setDialogueText(e.target.value)}
-            placeholder={mode === 'single' ? '输入需要转换为语音的文字内容...' : '主持人: 欢迎来到节目...\n嘉宾: 谢谢主持人...'}
+            placeholder={mode === 'single' ? '输入需要转换为语音的文字内容...' : `${dialogueNames(modelConfig)[0]}: 欢迎来到节目...\n${dialogueNames(modelConfig)[1]}: 谢谢主持人...`}
             className="w-full bg-neutral-900/90 border border-neutral-800 rounded-xl p-3.5 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 leading-relaxed transition-all"
           />
 
@@ -549,7 +621,7 @@ export const AudioTTSStudio: React.FC<AudioTTSStudioProps> = ({
           <button
             onClick={handleGenerate}
             disabled={isGenerating || !canGenerate}
-            title={!canGenerate ? '等待引擎就绪或输入文本后可生成' : undefined}
+            title={!canGenerate ? (provider === 'webSpeech' ? '当前浏览器音色不产生可保存音频' : '等待引擎就绪或输入文本后可生成') : undefined}
             className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white shadow-lg shadow-indigo-950/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
           >
             {isGenerating ? (
