@@ -6,7 +6,7 @@
  * 音频传输全部走字节流/文件（TTS 响应为 WAV 字节、ASR 请求为 multipart），不走 JSON Base64（硬性约束 #7）。
  * Qwen speaker 必须是模型运行时返回的官方精确 ID（如 uncle_fu），目录以外一律拒绝（硬性约束 #6）。
  */
-import { Agent, fetch as undiciFetch } from 'undici';
+import { Agent, FormData as UndiciFormData, fetch as undiciFetch } from 'undici';
 import { getConfig } from '../config';
 import { EngineValidationError } from './errors';
 import { observeWorkerSnapshot } from '../events/engineWatcher';
@@ -24,7 +24,8 @@ import { observeWorkerSnapshot } from '../events/engineWatcher';
 const inferenceDispatcher = new Agent({ headersTimeout: 900_000, bodyTimeout: 900_000 });
 
 /** DOM FormData/Response 与 undici 类型互不兼容，但运行时行为一致，转换收口在此 */
-async function inferenceFetch(url: string, init: RequestInit): Promise<Response> {
+type InferenceInit = Omit<RequestInit, 'body'> & { body?: RequestInit['body'] | UndiciFormData };
+async function inferenceFetch(url: string, init: InferenceInit): Promise<Response> {
   const res = await undiciFetch(url, { ...init, dispatcher: inferenceDispatcher } as Parameters<typeof undiciFetch>[1]);
   return res as unknown as Response;
 }
@@ -433,7 +434,8 @@ export async function qwenWorkerVoiceClone(req: {
   language: 'Chinese' | 'English' | 'Auto';
   signal?: AbortSignal;
 }): Promise<Buffer> {
-  const form = new FormData();
+  // undici fetch 只识别自家 FormData（全局 FormData 会被序列化成空 body → 422），见 inferenceFetch 注释
+  const form = new UndiciFormData();
   form.append('file', new Blob([new Uint8Array(req.referenceAudio)], { type: 'audio/wav' }), 'reference.wav');
   form.append('text', req.text);
   form.append('reference_text', req.referenceText);
@@ -451,7 +453,8 @@ export async function whisperWorkerTranscribe(
   language: 'auto' | 'zh' | 'en' = 'auto',
   signal?: AbortSignal
 ): Promise<{ transcript: string; language: string; duration: number }> {
-  const form = new FormData();
+  // 同上：undici fetch 需配对 undici FormData
+  const form = new UndiciFormData();
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav');
   form.append('language', language);
 

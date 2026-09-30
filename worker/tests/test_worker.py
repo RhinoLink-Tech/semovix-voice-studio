@@ -77,8 +77,8 @@ class FakeVoiceCloneModel:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def generate_voice_clone(self, text, language, ref_audio, ref_text):
-        self.calls.append({"text": text, "language": language, "ref_audio_rate": ref_audio[1], "ref_text": ref_text})
+    def generate_voice_clone(self, text, language, ref_audio, ref_text, max_new_tokens=None):
+        self.calls.append({"text": text, "language": language, "ref_audio_rate": ref_audio[1], "ref_text": ref_text, "max_new_tokens": max_new_tokens})
         return [np.zeros(2400, dtype=np.float32)], 24000
 
 
@@ -179,7 +179,7 @@ def test_voice_clone_uses_base_engine_and_requires_reference_audio(monkeypatch):
     result = client.post("/tts/voice-clone", files=wav_form(), data={"text": "测试文本", "reference_text": "参考文本", "language": "Chinese"})
     assert result.status_code == 200
     assert result.content[:4] == b"RIFF"
-    assert model.calls == [{"text": "测试文本", "language": "Chinese", "ref_audio_rate": 24000, "ref_text": "参考文本"}]
+    assert model.calls == [{"text": "测试文本", "language": "Chinese", "ref_audio_rate": 24000, "ref_text": "参考文本", "max_new_tokens": 480}]
 
 
 class GatedBuilder:
