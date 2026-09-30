@@ -84,13 +84,15 @@ export function getVoiceModelConfig(): VoiceModelConfig {
   }
 }
 
-export function saveVoiceModelConfig(config: VoiceModelConfig): void {
+export function saveVoiceModelConfig(config: VoiceModelConfig): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     // Dispatch custom event for reactive updates across components
     window.dispatchEvent(new CustomEvent('voice-model-config-updated', { detail: config }));
+    return true;
   } catch (e) {
     console.error('Failed to save voice model config', e);
+    return false;
   }
 }
 
@@ -140,13 +142,22 @@ export const AVAILABLE_TTS_MODELS: ModelOptionInfo[] = [
     capabilities: ['完全离线免费', '9 种预置音色', '情感/停顿指令控制', '24kHz WAV 输出'],
   },
   {
+    id: 'voice-profile',
+    name: '已发布 Voice Profile',
+    provider: '本库冻结产物 · 本地引擎',
+    description: '使用声音角色工作台发布冻结的 Voice Profile 合成：每次调用先校验冻结 Manifest 与参考音频的 SHA-256，再按 Profile 锁定的生产模型路由（Base 参考音频克隆 / CustomVoice 预置音色），生成留痕含角色、版本与 Manifest Hash。',
+    tag: '冻结身份可溯源',
+    badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/30',
+    capabilities: ['Manifest/参考音频双重校验', '按冻结版本精确路由', '生成留痕含溯源', '使用边界随版本锁定'],
+  },
+  {
     id: 'web-speech-native',
-    name: 'Web Audio / Local Browser Speech Engine',
-    provider: 'Client-Side Offline',
-    description: '本地离线备用合成器：无需 API 密钥与外部网络，直接调用终端系统原生合成与声学 DSP 发生器。',
-    tag: '离线零延迟兜底',
-    badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-    capabilities: ['100% 离线可用', '零网络消耗', '系统级发音人支持'],
+    name: '浏览器系统音色试听',
+    provider: '设备本地语音服务',
+    description: '调用当前设备的系统语音服务实时朗读样音。此模式不会输出音频文件，无法保存为素材或用于双人对谈。可在发音人页面试听系统音色。',
+    tag: '仅实时试听',
+    badgeClass: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    capabilities: ['设备本地试听', '系统发音人', '不输出音频文件'],
   },
 ];
 

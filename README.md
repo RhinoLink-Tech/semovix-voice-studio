@@ -1,74 +1,101 @@
-# Voice Studio
+# Semovix Voice Studio
 
-Voice Studio 是一套本地优先的声音资产工作台。声音角色流程把角色定义、来源配置、AI 原创设计、匿名评审、稳定性验证和不可变 Voice Profile 发布串成可追溯的闭环。
+Semovix Voice Studio 是一个本地优先的声音角色与音频生产工作台。它把声音来源配置、候选评审、内容适配检查、Voice Profile 版本发布和后续程序调用连接成一条可追溯流程。
 
-## 本地运行
+> **当前为开发预览版（Alpha / Development Preview）。** 真实推理能力取决于模型权重、硬件、运行环境和外部服务配置；部分功能仍在验收中。各项能力的真实状态以 [能力状态矩阵](docs/CAPABILITY_STATUS.md) 为准，本 README 不做超出该矩阵的能力声明。
 
-安装依赖后，可使用单进程模式：
+## 当前主流程
+
+1. 创建声音角色并配置来源。四种来源共用同一工作台：AI 原创设计、授权真人克隆、Provider 预置音色、导入已有 Voice Profile。
+2. AI 原创来源创建不可变声音设计批次，候选以随机匿名编号进入评审；评审记录七项分数、硬性否决与入围结果。
+3. 入围候选进入**内容适配与重复生成检查**（页面与文档原称"稳定性验证"）：以候选 WAV 为参考音生成五组内容测试与三次重复生成，逐条保存 WAV、SHA-256、时长、波形摘要和 Whisper 回听转录。
+4. 自动检查只覆盖内容维度（是否成功生成、音频完整、时长、转录与原文的文字一致性、重复生成是否完成）；音色、漂移与听感必须由责任人完整人工回听确认。系统不计算声纹相似度或音色稳定度得分。
+5. 冻结发布复制最终参考音频与验证报告，写入不可变 Manifest、SHA-256 校验与审计记录。
+6. 已发布的 Voice Profile 可经 OpenAI 风格音频端点或 MCP 在后续程序调用中消费。
+
+授权真人克隆需要归档授权文件、有效期、用途边界与参考音频，没有有效归档授权不能上传样本或生成样音；系统提供授权材料的管理与留档，**不提供法律合规判断**。该来源当前为实验性：Alpha 版本禁用其 Profile 的正式发布与生产调用。
+
+## 版本状态
+
+- 开发预览版，未发布任何安装包或正式版本。
+- CI 使用伪模型，只验证路由、状态机、幂等、Hash、文件安全与任务恢复，不能证明真实音质或真实模型运行通过。
+- 真实模型验收（Golden Path）尚未完成，见 [能力状态矩阵](docs/CAPABILITY_STATUS.md)。
+
+## 本地与云端边界
+
+- **本地（默认）**：Qwen3-TTS 推理与 Whisper 转录由本机 Python Worker 执行，素材、批次、Profile 与授权材料保存在本机 `SEMOVIX_LIBRARY_DIR`；Node 服务默认仅监听 `127.0.0.1`。
+- **云端（可选、需显式配置）**：Google Gemini TTS 与云端转录需设置 `GEMINI_API_KEY`；未配置时这些引擎如实返回不可用，不会静默切换或伪造结果。可选的本地 Ollama 用于转录后摘要等辅助推理。
+- 本地优先不等于完全离线已验收：整体离线运行尚未做系统验收（见能力状态矩阵）。
+- **默认不启用遥测**：不收集、不上传使用数据；若未来引入遥测，将以默认透明、可关闭的方式实现并在文档中明确说明。
+
+## 安装与运行
+
+依赖：Node.js 22+、bun（仓库附 `bun.lock`）、可运行 PyTorch 的 Python 3.10+ 环境。
 
 ```bash
-npm run dev
+bun install
+bun run dev            # 单进程模式：http://127.0.0.1:3000 同时提供前端与 API
 ```
 
-它在 `http://127.0.0.1:3000` 同时提供前端和 API。
-
-也可把浏览器预览和 API 服务分开运行：
+也可分离运行：
 
 ```bash
-npm run dev:api
-npm run dev:web
+bun run dev:api        # API 服务 @ 127.0.0.1:3210
+bun run dev:web        # Vite 浏览器预览，/api 代理到 3210（SEMOVIX_API_URL 可覆盖）
 ```
 
-浏览器预览会把 `/api` 代理到 `http://127.0.0.1:3210`。通过 `SEMOVIX_API_URL` 可覆盖代理目标。
-
-Python Worker 负责 Qwen3-TTS 和 Whisper：
+启动 Python Worker（Qwen3-TTS 与 Whisper）：
 
 ```bash
 cd worker
 ./启动Worker.command
 ```
 
-Worker 默认位于 `http://127.0.0.1:8800`，可通过 `SEMOVIX_WORKER_URL` 覆盖。模型目录与其他环境变量见 [.env.example](.env.example)。
-AI 原创设计、授权真人克隆和 Whisper 分别需要 VoiceDesign、Base 与 Whisper 权重；`python worker/doctor.py` 会逐项报告本地 checkpoint 或首次下载需求，不能通过体检时不应启动生产任务。
+Worker 默认位于 `http://127.0.0.1:8800`（`SEMOVIX_WORKER_URL` 可覆盖）。全部环境变量见 [.env.example](.env.example)；启动前执行 `python worker/doctor.py`，逐项确认本地 checkpoint 或首跑下载需求。
 
-## 声音角色交付链路
+## 模型与硬件要求
 
-1. 创建声音角色并保存来源配置。四种来源共享同一工作台外壳：AI 原创设计、授权真人克隆、Provider 预置音色和导入已有 Voice Profile。
-2. AI 原创来源创建一个不可变的声音设计批次；候选仅通过随机匿名编号进入评审。
-3. 评审记录每条候选的七项分数、硬性否决、备注和入围结果。
-4. 验证任务以入围候选的 WAV 为 Base 参考音，生成五组内容测试和三次重复测试；每条输出都保存 WAV、SHA-256、时长、波形摘要和 Whisper 转录。
-5. 责任人完整回听后保存发布决策。只有自动验证通过且有人工确认的候选可以冻结。
-6. 冻结操作复制最终参考 WAV 和验证报告，并写入不可变 Manifest 与 SHA-256 校验文件。
+| 用途 | 默认权重（HuggingFace repo id） |
+|---|---|
+| 通用 TTS / 克隆推理与内容检查 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` |
+| AI 原创声音设计 | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` |
+| 授权真人克隆（CustomVoice） | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` |
+| 回听转录（ASR） | `openai/whisper-large-v3-turbo` |
 
-授权真人克隆另有授权文件、有效期、用途边界、参考音频、参考文本和样本质量检查；没有有效归档授权不能上传样本或生成克隆样音。
-
-Provider 预置音色只从已连接 Worker 的运行时目录读取官方 speaker ID。选择时必须保存 Provider、许可确认、非独占性确认和允许/禁止用途；试听样音为真实生成的 WAV，并与选择记录一起归档。来源验证会再次核验运行时 speaker、试听音频 Hash 和 ASR 回听结果。
-
-导入已有 Voice Profile 只接受 ZIP 包。服务端要求包内有 `manifest.json` 和 Manifest 声明的单声道 16-bit PCM WAV，并声明生产模型、允许用途和禁止用途；服务端限制上传和解压大小、拒绝不安全路径、校验参考音频 SHA-256，并在每次读取参考音频前再次校验归档 Hash。当前工作台只接受可验证的 Qwen CustomVoice 或 Base Profile；不兼容模型会如实阻断发布。
-
-授权真人克隆、Provider 预置音色和导入 Profile 都会进入统一“验证与发布”入口。验证记录会保存来源快照、实际音频、Hash、运行时目录或模型兼容性检查，以及可用时的 Whisper 回听结果。来源资料、授权、样音或使用边界发生变化后，旧验证与发布决策会自动失效；未重新验证不能冻结新版本。Provider 试听和来源验证任务的队列状态会落盘，服务重启后会自动恢复。
+- 权重首次运行时联网下载，也可通过 `.env` 指向本地目录；磁盘空间请按各权重大小预留。
+- 当前开发与手动验收在一台 Apple Silicon macOS 上进行；其他硬件与平台未验收。
+- 云端 Gemini TTS 为可选付费服务，使用前需自行配置与评估。
 
 ## 验证
 
 ```bash
-npm run lint
-npm run test:unit
-npm run test:integration
-python3 -m pytest worker/tests/test_worker.py -q
-npm run build
+bun run lint
+bun run test                              # vitest（unit + integration，伪模型）
+python3 -m pytest worker/tests/test_worker.py -q   # Worker 测试
+bun run build
 ```
+
+## 已知限制
+
+- 真实模型验收仅在单台开发机部分完成；macOS / Windows 安装包未构建、未验收。
+- 授权真人克隆为**实验性来源**：Alpha 版本已禁用其 Voice Profile 的正式发布与生产调用（授权到期/撤销的运行时策略检查尚未实现）；授权归档、参考样本与来源验证可正常使用。模型更新后的漂移策略未实现（发布基线后续 PR 范围）。
+- 同名模型权重更新后，不保证严格复现历史输出；推理时刻的模型身份会记录进 Manifest。
+- 多轨混音执行 EQ、压缩、峰值归一化与人声优先 Auto Ducking，**没有** BS.1770 / EBU R128 的 LUFS 响度测量闭环，不能用于证明达到任何平台响度标准。
+- 定位单机或受控内网：无内置身份认证、多租户与审计汇聚；上线多用户环境需按 [docs/DELIVERY.md](docs/DELIVERY.md) 的部署边界由基础设施补齐。
+- CI 不下载真实权重，不证明音质、性能或跨平台可用性。
+
+## 开源与第三方许可状态
+
+- 根目录 [LICENSE](LICENSE) 为未经修改的 Apache License 2.0 标准正文（项目所有者 2026-09-30 决定），随附 [NOTICE](NOTICE) 与发行物核查清单 [DISTRIBUTION_LICENSE_CHECKLIST.md](DISTRIBUTION_LICENSE_CHECKLIST.md)。
+- **许可证文件就位不等于正式发布**：逐文件来源审查尚未完成（[CODE_PROVENANCE.md](CODE_PROVENANCE.md)），审查完成前不以 Apache-2.0 正式发布相应代码，也不对代码原创性做超出该审查的声明。
+- 本项目在能力与架构层面参考了 `debpalash/VoiceStudio`（AGPL-3.0）的公开设计（记录见 [docs/001.md](docs/001.md)）；针对其全库自动化初筛未发现复制证据，逐文件人工结论以 [CODE_PROVENANCE.md](CODE_PROVENANCE.md) 为准。
+- 第三方依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（release-candidate 草稿，逐项版本与许可待对实际发行物核实），模型权重许可矩阵见 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md)；模型代码、模型权重与云服务条款不由根目录 Apache-2.0 覆盖。
 
 ## 受控环境交付
 
-构建产物包含浏览器静态文件和 Node 服务包：
-
 ```bash
-npm run build
-NODE_ENV=production npm run start:production
+bun run build
+NODE_ENV=production node dist/server.mjs   # 或 bun run start:production
 ```
 
-服务默认仅监听 `127.0.0.1`。受控内网部署应由反向代理承担 TLS 与身份认证，并将 Node 服务和 Python Worker 保持在同一受限网络；Worker 端口不能直接暴露。启动前执行 `python worker/doctor.py`，确认 VoiceDesign、Base、CustomVoice 与 Whisper 所需的 checkpoint 已可用。发布前应执行上述完整测试集和 `npm run smoke:local`。
-
-## 上线前配置
-
-当前实现按本地优先方式持久化音频、授权文件、批次和 Profile，适合单机或受控内网交付。部署到多用户环境前，需要把本地文件目录替换为受权限控制的对象存储，并接入身份认证、租户隔离、角色权限、审计日志汇聚、恶意文件扫描、密钥管理和受控任务队列。上线服务不得通过当前默认的 `127.0.0.1` 监听直接暴露到公网。
+服务默认仅监听回环地址。受控内网部署应由反向代理承担 TLS 与身份认证，并将 Node 服务和 Worker 保持在同一受限网络；Worker 端口不能直接暴露。发布前应执行完整测试集与 `bun run smoke:local`。

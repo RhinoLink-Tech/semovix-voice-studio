@@ -1,0 +1,7 @@
+{
+  "check": "同幂等键 + 异指纹再提交 → 期待 409 idempotency_key_conflict；库内 batch.json 保持原样",
+  "replayStatus": 409,
+  "replayCode": "idempotency_key_conflict",
+  "batchUnchanged": true,
+  "pass": true
+}

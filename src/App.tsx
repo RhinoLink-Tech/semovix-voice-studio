@@ -16,7 +16,7 @@ import { AudioImportModal } from './components/AudioImportModal';
 import { AudioTranscribeModal } from './components/AudioTranscribeModal';
 import { SubtitleExportModal } from './components/SubtitleExportModal';
 import { ProjectBackupModal } from './components/ProjectBackupModal';
-import { VoiceModelConfigModal } from './components/VoiceModelConfigModal';
+import { VoiceModelConfigPage } from './components/VoiceModelConfigPage';
 import { GlobalPlayer } from './components/GlobalPlayer';
 import { VoiceIdentitiesView } from './components/VoiceIdentitiesView';
 import { VoiceIdentityCreateView, type VoiceSource } from './components/VoiceIdentityCreateView';
@@ -27,6 +27,9 @@ import { VoiceIdentityProviderPresetView } from './components/VoiceIdentityProvi
 import { VoiceIdentityImportedProfileView } from './components/VoiceIdentityImportedProfileView';
 import { VoiceIdentityReviewView } from './components/VoiceIdentityReviewView';
 import { VoiceIdentityValidationEntry } from './components/VoiceIdentityValidationEntry';
+import { DesktopGate } from './components/desktop/DesktopGate';
+import { ModelsView } from './components/models/ModelsView';
+import { saveFromUrl } from './desktop/fileDialogs';
 
 import { AudioItem, AudioFolder } from './types/audio';
 import { 
@@ -75,10 +78,35 @@ function currentVoiceValidationRoute(): { id: string; batchId: string } | null {
   return match ? { id: decodeURIComponent(match[1]), batchId: new URLSearchParams(window.location.search).get('batchId') || '20260924-01' } : null;
 }
 
+const VOICE_CONFIG_PATH = '/voice-model-config';
+
+type ConfigReturn = { tab: StudioTab; path: string; fromApp: boolean };
+
+function isWorkspaceTab(value: unknown): value is StudioTab {
+  return value === 'library' || value === 'voice-identities' || value === 'tts' || value === 'sfx'
+    || value === 'beat' || value === 'multitrack' || value === 'models';
+}
+
+function currentStudioTab(): StudioTab {
+  if (window.location.pathname === VOICE_CONFIG_PATH) return 'voice-config';
+  if (window.location.pathname.startsWith('/voice-identities')) return 'voice-identities';
+  const historyTab = (window.history.state as { studioTab?: unknown } | null)?.studioTab;
+  return isWorkspaceTab(historyTab) ? historyTab : 'library';
+}
+
+function currentConfigReturn(): ConfigReturn {
+  const state = window.history.state as { returnTab?: unknown; returnPath?: unknown; fromApp?: unknown } | null;
+  const tab = isWorkspaceTab(state?.returnTab) ? state.returnTab : 'tts';
+  const path = typeof state?.returnPath === 'string' && state.returnPath.startsWith('/')
+    ? state.returnPath : '/';
+  return { tab, path, fromApp: state?.fromApp === true };
+}
+
 export default function App() {
   const [items, setItems] = useState<AudioItem[]>([]);
   const [folders, setFolders] = useState<AudioFolder[]>([]);
-  const [currentTab, setCurrentTab] = useState<StudioTab>(() => window.location.pathname.startsWith('/voice-identities') ? 'voice-identities' : 'library');
+  const [currentTab, setCurrentTab] = useState<StudioTab>(currentStudioTab);
+  const [configReturn, setConfigReturn] = useState<ConfigReturn>(currentConfigReturn);
   const [voiceCreateOpen, setVoiceCreateOpen] = useState(() => window.location.pathname === '/voice-identities/new');
   const [voiceWorkbenchId, setVoiceWorkbenchId] = useState<string | null>(() => { const route = currentVoiceSourceRoute(); return route && route.source !== 'AI 原创设计' ? route.id : null; });
   const [voiceDesignId, setVoiceDesignId] = useState<string | null>(() => { const route = currentVoiceSourceRoute(); return route?.source === 'AI 原创设计' ? route.id : null; });
@@ -89,7 +117,8 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentTab(window.location.pathname.startsWith('/voice-identities') ? 'voice-identities' : 'library');
+      setCurrentTab(currentStudioTab());
+      if (window.location.pathname === VOICE_CONFIG_PATH) setConfigReturn(currentConfigReturn());
       setVoiceCreateOpen(window.location.pathname === '/voice-identities/new');
       const route = currentVoiceSourceRoute();
       setVoiceReview(currentVoiceReviewRoute());
@@ -130,7 +159,21 @@ export default function App() {
     return () => { live = false; };
   }, [currentTab]);
 
+  const openVoiceConfig = () => {
+    if (currentTab === 'voice-config') return;
+    const returnPath = window.location.pathname + window.location.search + window.location.hash;
+    const nextReturn: ConfigReturn = { tab: currentTab, path: returnPath, fromApp: true };
+    setConfigReturn(nextReturn);
+    setCurrentTab('voice-config');
+    window.history.replaceState({ ...window.history.state, studioTab: currentTab }, '', returnPath);
+    window.history.pushState({ studioTab: 'voice-config', returnTab: currentTab, returnPath, fromApp: true }, '', VOICE_CONFIG_PATH);
+  };
+
   const handleTabChange = (tab: StudioTab) => {
+    if (tab === 'voice-config') {
+      openVoiceConfig();
+      return;
+    }
     setCurrentTab(tab);
     setVoiceCreateOpen(false);
     setVoiceWorkbenchId(null);
@@ -139,7 +182,16 @@ export default function App() {
     setVoiceValidation(null);
     setSearchQuery('');
     const path = tab === 'voice-identities' ? '/voice-identities' : '/';
-    if (window.location.pathname !== path) window.history.pushState({}, '', path);
+    if (window.location.pathname !== path) window.history.pushState({ studioTab: tab }, '', path);
+    else window.history.replaceState({ ...window.history.state, studioTab: tab }, '', path);
+  };
+
+  const returnFromVoiceConfig = () => {
+    if (configReturn.fromApp) {
+      window.history.back();
+    } else {
+      handleTabChange('tts');
+    }
   };
 
   const openVoiceCreate = () => {
@@ -254,7 +306,6 @@ export default function App() {
   const [subtitleItem, setSubtitleItem] = useState<AudioItem | null>(null);
   const [isRecorderOpen, setIsRecorderOpen] = useState(false);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
-  const [isVoiceModelConfigOpen, setIsVoiceModelConfigOpen] = useState(false);
   const [isProjectBackupOpen, setIsProjectBackupOpen] = useState(false);
 
   // Load initial data
@@ -418,12 +469,8 @@ export default function App() {
   };
 
   const handleDownload = (item: AudioItem) => {
-    const a = document.createElement('a');
-    a.href = item.audioUrl;
-    a.download = `${item.title || 'audio'}.${item.format || 'wav'}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // 桌面：原生保存对话框；Web：浏览器下载（P0-A #12）
+    void saveFromUrl(`${item.title || 'audio'}.${item.format || 'wav'}`, item.audioUrl);
   };
 
   // Folder Operations
@@ -472,7 +519,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans">
+    <div className={`${currentTab === 'voice-config' ? 'h-dvh min-h-0 overflow-hidden' : 'min-h-screen'} bg-neutral-950 text-neutral-100 flex flex-col font-sans`}>
       
       {/* Top Navbar */}
       <Navbar
@@ -482,7 +529,7 @@ export default function App() {
         onSearchChange={setSearchQuery}
         onOpenRecorder={() => setIsRecorderOpen(true)}
         onOpenImporter={() => setIsImporterOpen(true)}
-        onOpenVoiceModelConfig={() => setIsVoiceModelConfigOpen(true)}
+        onOpenVoiceModelConfig={openVoiceConfig}
         onOpenProjectBackup={() => setIsProjectBackupOpen(true)}
         totalItems={items.length}
         totalDurationSeconds={totalDurationSeconds}
@@ -492,7 +539,7 @@ export default function App() {
       />
 
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden" data-player-visible={Boolean(activeItem)}>
+      <div className="min-h-0 flex-1 flex overflow-hidden" data-player-visible={Boolean(activeItem) && currentTab !== 'voice-config'}>
         
         {/* Left Sidebar (Only visible in library view) */}
         {currentTab === 'library' && (
@@ -569,12 +616,21 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'tts' && (
-            <AudioTTSStudio
-              folders={folders}
-              onSaveToLibrary={handleSaveToLibrary}
-              onOpenEditor={(item) => setEditingItem(item)}
-              onOpenVoiceModelConfig={() => setIsVoiceModelConfigOpen(true)}
+          {(currentTab === 'tts' || (currentTab === 'voice-config' && configReturn.tab === 'tts')) && (
+            <div className={currentTab === 'tts' ? 'flex min-w-0 flex-1 overflow-hidden' : 'hidden'}>
+              <AudioTTSStudio
+                folders={folders}
+                onSaveToLibrary={handleSaveToLibrary}
+                onOpenEditor={(item) => setEditingItem(item)}
+                onOpenVoiceModelConfig={openVoiceConfig}
+              />
+            </div>
+          )}
+
+          {currentTab === 'voice-config' && (
+            <VoiceModelConfigPage
+              onBack={returnFromVoiceConfig}
+              onOpenModels={() => handleTabChange('models')}
             />
           )}
 
@@ -603,11 +659,15 @@ export default function App() {
               onOpenEditor={(item) => setEditingItem(item)}
             />
           )}
+
+          {currentTab === 'models' && (
+            <ModelsView />
+          )}
         </main>
       </div>
 
       {/* Global Persistent Bottom Audio Player Bar */}
-      {currentTab !== 'voice-identities' && <GlobalPlayer
+      {currentTab !== 'voice-identities' && currentTab !== 'voice-config' && <GlobalPlayer
         item={activeItem}
         isPlaying={isPlaying}
         onTogglePlay={handleToggleGlobalPlay}
@@ -652,12 +712,6 @@ export default function App() {
         />
       )}
 
-      {/* Voice Large Language Model Configuration Modal */}
-      <VoiceModelConfigModal
-        isOpen={isVoiceModelConfigOpen}
-        onClose={() => setIsVoiceModelConfigOpen(false)}
-      />
-
       {/* Subtitle SRT / VTT Export Modal */}
       {subtitleItem && (
         <SubtitleExportModal
@@ -678,6 +732,9 @@ export default function App() {
           setFolders(restoredFolders);
         }}
       />
+
+      {/* 桌面模式：首次启动向导 / 运行时状态中心（Web 模式不渲染） */}
+      <DesktopGate onOpenModels={() => handleTabChange('models')} />
 
     </div>
   );

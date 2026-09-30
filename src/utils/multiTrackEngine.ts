@@ -1,28 +1,30 @@
 import { MultiTrack, TimelineClip, MasteringPreset } from '../types/audio';
 import { audioBufferToWav } from './audioEngine';
 
+// 母带预设：当前渲染链执行 EQ、压缩与峰值归一化；targetLufs 为保留字段（未来响度能力），
+// 尚未实现 BS.1770 / EBU R128 的 Integrated LUFS 与 True Peak 测量闭环，不得对外表述为已达响度标准。
 export const MASTERING_PRESETS: MasteringPreset[] = [
   {
     id: 'podcast_broadcast',
-    name: '播客广播标准 (-16 LUFS)',
+    name: '播客人声预设',
     targetLufs: -16,
-    description: '突出人声通透度与中频厚度，抑制爆音，符合 Apple Podcasts 与各大音频平台发布标准。',
+    description: '突出人声通透度与中频厚度，抑制爆音，适合播客与访谈类内容的人声听感。',
     eqBoostLow: 1.5,
     eqBoostHigh: 2.0,
     compressionRatio: 3.0,
   },
   {
     id: 'social_video',
-    name: '短视频 / 社交媒体高响度 (-14 LUFS)',
+    name: '短视频高响度预设',
     targetLufs: -14,
-    description: '饱满有力的商业响度，在手机扬声器下声音依然清晰、穿透力强。',
+    description: '更饱满有力的听感，在手机扬声器下声音依然清晰、穿透力强，适合短视频与社交媒体内容。',
     eqBoostLow: 2.5,
     eqBoostHigh: 3.5,
     compressionRatio: 4.5,
   },
   {
     id: 'cinematic_epic',
-    name: '影视史诗感 (-18 LUFS)',
+    name: '影视动态预设',
     targetLufs: -18,
     description: '保留宽广动态范围 (Wide Dynamic Range)，低音深沉、高音泛音空灵。',
     eqBoostLow: 3.0,
@@ -31,7 +33,7 @@ export const MASTERING_PRESETS: MasteringPreset[] = [
   },
   {
     id: 'transparent_natural',
-    name: '原声纯净直通 (0 dB 均衡)',
+    name: '原声直通预设',
     targetLufs: -16,
     description: '不额外增加染色与压限，保证各轨道最忠实的原始质感。',
     eqBoostLow: 0,

@@ -1,8 +1,9 @@
 {
-  "name": "react-example",
+  "name": "semovix-voice-studio",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha",
   "type": "module",
+  "main": "./electron/build/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "dev:api": "PORT=3210 tsx server.ts",
@@ -17,11 +18,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration --passWithNoTests",
-    "smoke:local": "tsx scripts/smoke-local.ts"
+    "test:integration": "vitest run --project integration",
+    "smoke:local": "tsx scripts/smoke-local.ts",
+    "build:electron": "node scripts/build-electron.mjs",
+    "dev:desktop": "bun run build:electron && node scripts/run-electron.mjs electron/build/main.cjs",
+    "desktop:prod": "bun run build && bun run build:electron && node scripts/run-electron.mjs electron/build/main.cjs --prod",
+    "smoke:desktop": "tsx scripts/smoke-desktop.ts",
+    "package:dir": "node scripts/release.mjs --dir",
+    "dist:mac": "node scripts/release.mjs --mac",
+    "dist:win": "node scripts/release.mjs --win"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "better-sqlite3": "^13.0.3",
@@ -33,7 +42,9 @@
     "multer": "^2.4.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^8.3.0"
+    "undici": "^8.11.2",
+    "vite": "^8.3.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
@@ -44,6 +55,8 @@
     "@types/react-dom": "^19.3.0",
     "@types/supertest": "^7.2.1",
     "autoprefixer": "^10.4.21",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "supertest": "^7.3.0",
     "tailwindcss": "^4.3.3",
@@ -53,6 +66,7 @@
   },
   "trustedDependencies": [
     "@google/genai",
-    "protobufjs"
+    "protobufjs",
+    "electron"
   ]
 }

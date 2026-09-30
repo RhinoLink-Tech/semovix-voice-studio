@@ -45,8 +45,8 @@ describe('resolveTtsAdapter allowlist', () => {
     }
   });
 
-  it('keeps the catalog consistent: SUPPORTED = gemini models + qwen', () => {
-    expect([...SUPPORTED_TTS_MODELS]).toEqual([...GEMINI_TTS_MODELS, 'qwen3-tts-local']);
+  it('keeps the catalog consistent: SUPPORTED = gemini models + qwen + voice-profile', () => {
+    expect([...SUPPORTED_TTS_MODELS]).toEqual([...GEMINI_TTS_MODELS, 'qwen3-tts-local', 'voice-profile']);
     expect(SUPPORTED_TTS_MODELS).not.toContain('web-speech-native'); // 浏览器预览特例由路由处理
   });
 });

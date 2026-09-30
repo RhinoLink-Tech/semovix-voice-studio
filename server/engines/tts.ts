@@ -10,7 +10,10 @@ import { pcmToWavBuffer, wavDuration, concatWavBuffers, parseWav } from '../audi
 import { applySpeedToWav } from '../audio/wsola';
 import { getGeminiClient, hasGeminiApiKey } from './geminiClient';
 import { EngineValidationError } from './errors';
-import { getWorkerStatus, qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady } from './qwenWorker';
+import { getWorkerStatus, qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady, type WorkerEngineCapabilities } from './qwenWorker';
+import { voiceProfileAdapter } from './voiceProfileTts';
+
+export type DialoguePacing = 'tight' | 'natural' | 'relaxed';
 
 export interface TTSSynthesizeRequest {
   text: string;
@@ -21,6 +24,7 @@ export interface TTSSynthesizeRequest {
   speed?: number;
   temperature?: number;
   multiSpeaker?: boolean;
+  pacing?: DialoguePacing;
   speakers?: { speaker: string; voiceName: string }[];
 }
 
@@ -29,12 +33,22 @@ export interface TTSSynthesizeResult {
   sampleRate: number;
   duration: number; // seconds
   voiceName: string;
+  /** P0-B #27/#28：Voice Profile 通路带出的溯源（普通引擎通路不带此字段） */
+  provenance?: {
+    voiceIdentityId: string;
+    voiceProfileVersion: string;
+    manifestHash: string;
+    /** 实际承担推理的 Worker 引擎（供 #28 捕获精确模型身份） */
+    workerEngine?: 'qwen_tts' | 'voice_clone';
+  };
 }
 
 export interface TTSEngineAdapter {
   id: string;
   label: string;
   requiresApiKey: boolean;
+  /** #19 能力合同：引擎自述能力（页面据此展示，不得按模型名猜测）。不替代 adapter 本身的路由职责。 */
+  capabilities: WorkerEngineCapabilities;
   isAvailable(): Promise<boolean>;
   synthesize(req: TTSSynthesizeRequest): Promise<TTSSynthesizeResult>;
 }
@@ -45,6 +59,17 @@ export const geminiAdapter: TTSEngineAdapter = {
   id: 'gemini',
   label: 'Google Gemini Audio',
   requiresApiKey: true,
+  capabilities: {
+    presetVoice: true,
+    design: false,
+    clone: false,
+    transcription: false,
+    languages: ['中文', '英文', '多语种文本朗读'],
+    sampleRateHz: 24000,
+    supportsSeed: false,
+    supportsReferenceAudio: false,
+    supportsStreaming: false,
+  },
   isAvailable: async () => hasGeminiApiKey(),
   async synthesize(req) {
     const ai = getGeminiClient();
@@ -52,6 +77,17 @@ export const geminiAdapter: TTSEngineAdapter = {
     if (req.emotion) {
       speechPrompt = `Speak with an emotion and tone of [${req.emotion}]: ${req.text}`;
     }
+
+    // Gemini 一次生成整段多角色音频；节奏是表达偏好，无法承诺精确段间秒数。
+    const pacingGuidance: Record<DialoguePacing, string> = {
+      tight: '双人对话请采用紧凑的轮替，角色转换时仅保留简短自然停顿；保持原台词不变。',
+      natural: '双人对话请采用自然的交流节奏，在角色转换时保留适度停顿；保持原台词不变。',
+      relaxed: '双人对话请采用舒缓的交流节奏，在角色转换时留出更多呼吸与思考空间；保持原台词不变。',
+    };
+    const systemInstruction = [
+      req.systemInstruction,
+      ...(req.multiSpeaker ? [pacingGuidance[req.pacing ?? 'natural']] : []),
+    ].filter(Boolean).join('\n');
 
     const targetModel = req.ttsModel || 'gemini-2.5-flash-preview-tts';
     const tempValue = Math.max(0.1, Math.min(1.5, Number(req.temperature) || 0.7));
@@ -64,7 +100,7 @@ export const geminiAdapter: TTSEngineAdapter = {
         config: {
           responseModalities: [Modality.AUDIO],
           temperature: tempValue,
-          ...(req.systemInstruction ? { systemInstruction: req.systemInstruction } : {}),
+          ...(systemInstruction ? { systemInstruction } : {}),
           speechConfig: {
             multiSpeakerVoiceConfig: {
               speakerVoiceConfigs: [
@@ -92,7 +128,7 @@ export const geminiAdapter: TTSEngineAdapter = {
         config: {
           responseModalities: [Modality.AUDIO],
           temperature: tempValue,
-          ...(req.systemInstruction ? { systemInstruction: req.systemInstruction } : {}),
+          ...(systemInstruction ? { systemInstruction } : {}),
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: req.voiceName || 'Kore' },
@@ -139,6 +175,12 @@ const QWEN_EMOTION_INSTRUCT: Record<string, string> = {
   史诗震撼: '用史诗感、宏大震撼的电影预告片旁白语气朗读。',
 };
 
+const DIALOGUE_GAP_SECONDS: Record<DialoguePacing, number> = {
+  tight: 0.12,
+  natural: 0.3,
+  relaxed: 0.7,
+};
+
 function toQwenInstruct(emotion?: string, systemInstruction?: string): string | null {
   const parts: string[] = [];
   if (emotion) parts.push(QWEN_EMOTION_INSTRUCT[emotion] || `用${emotion}的语气朗读。`);
@@ -150,6 +192,19 @@ export const qwenLocalAdapter: TTSEngineAdapter = {
   id: 'qwen3-tts-local',
   label: 'Qwen3-TTS 1.7B (Worker)',
   requiresApiKey: false,
+  // #19 静态声明（本 adapter 只承载 CustomVoice 预置音色引擎）；语言/音色目录以 Worker
+  // /health 与 /voices 运行时自述为准（见 /api/voice-model/status 的 capabilities 字段）
+  capabilities: {
+    presetVoice: true,
+    design: false,
+    clone: false,
+    transcription: false,
+    languages: ['Auto', 'Chinese', 'English'],
+    sampleRateHz: 24000,
+    supportsSeed: false,
+    supportsReferenceAudio: false,
+    supportsStreaming: false,
+  },
   // 仅供状态面板使用（ready 才算可用）；调用链路不走此预检——cold 也有机会加载（P01）
   isAvailable: async () => {
     const status = await getWorkerStatus();
@@ -167,25 +222,40 @@ export const qwenLocalAdapter: TTSEngineAdapter = {
 
     // 双人对话：按「角色: 台词」逐行合成再拼接（Qwen 不支持原生多人对谈）
     if (req.multiSpeaker && req.speakers && req.speakers.length >= 2) {
-      const voiceFor = (name: string): string => {
-        const hit = req.speakers!.find(s => s.speaker === name);
-        return resolveQwenSpeaker(hit?.voiceName || req.voiceName || '', catalog);
-      };
+      const speakerByName = new Map(req.speakers.map(s => [
+        typeof s?.speaker === 'string' ? s.speaker.trim() : '',
+        typeof s?.voiceName === 'string' ? s.voiceName : '',
+      ]));
+      if (speakerByName.size < 2 || speakerByName.has('')) {
+        throw new EngineValidationError('双人对谈需要两个不同且非空的角色名称。', 'invalid_dialogue_speakers');
+      }
       const lines = req.text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-      const parsed = lines
-        .map(line => {
-          const m = line.match(/^\s*([^：:]{1,20})[：:]\s*(.+)$/);
-          return m ? { name: m[1].trim(), text: m[2].trim() } : null;
-        })
-        .filter((x): x is { name: string; text: string } => x !== null);
-      const segments = parsed.length ? parsed : [{ name: req.speakers[0].speaker || 'Speaker1', text: req.text }];
+      if (lines.length === 0) {
+        throw new EngineValidationError('双人对谈剧本不能为空。', 'invalid_dialogue_script');
+      }
+      const segments = lines.map((line, index) => {
+        const match = line.match(/^([^：:]{1,20})[：:]\s*(.*)$/);
+        if (!match) {
+          throw new EngineValidationError(`第 ${index + 1} 行请使用「角色名: 台词」格式。`, 'invalid_dialogue_script', { line: index + 1 });
+        }
+        const segmentText = match[2].trim();
+        if (!segmentText) {
+          throw new EngineValidationError(`第 ${index + 1} 行的台词不能为空。`, 'invalid_dialogue_script', { line: index + 1 });
+        }
+        const name = match[1].trim();
+        const voiceName = speakerByName.get(name);
+        if (!voiceName) {
+          throw new EngineValidationError(`第 ${index + 1} 行的角色「${name}」不在当前双人配置中。`, 'unknown_dialogue_speaker', { line: index + 1, speaker: name });
+        }
+        return { text: segmentText, voiceName };
+      });
 
       const wavs: Buffer[] = [];
       for (const seg of segments) {
-        const segWav = await qwenWorkerSynthesize({ text: seg.text, speaker: voiceFor(seg.name), instruct });
+        const segWav = await qwenWorkerSynthesize({ text: seg.text, speaker: resolveQwenSpeaker(seg.voiceName, catalog), instruct });
         wavs.push(applySpeedToWav(segWav, req.speed));
       }
-      const wav = concatWavBuffers(wavs, 0.3); // 段间 0.3s 停顿，模拟对话自然节奏
+      const wav = concatWavBuffers(wavs, DIALOGUE_GAP_SECONDS[req.pacing ?? 'natural']);
       return {
         wavBase64: wav.toString('base64'),
         sampleRate: parseWav(wav).format.sampleRate,
@@ -206,7 +276,7 @@ export const qwenLocalAdapter: TTSEngineAdapter = {
   },
 };
 
-export const ttsAdapters: TTSEngineAdapter[] = [geminiAdapter, qwenLocalAdapter];
+export const ttsAdapters: TTSEngineAdapter[] = [geminiAdapter, qwenLocalAdapter, voiceProfileAdapter];
 
 /* ---------- 模型白名单（硬性约束 #4：未知 ID 不得默认发给 Gemini） ---------- */
 
@@ -217,7 +287,7 @@ export const GEMINI_TTS_MODELS: readonly string[] = [
 ];
 
 /** 服务端可真正合成音频的模型 ID（web-speech-native 仅浏览器预览，由路由单独处理） */
-export const SUPPORTED_TTS_MODELS: readonly string[] = [...GEMINI_TTS_MODELS, qwenLocalAdapter.id];
+export const SUPPORTED_TTS_MODELS: readonly string[] = [...GEMINI_TTS_MODELS, qwenLocalAdapter.id, voiceProfileAdapter.id];
 
 export class UnsupportedTtsModelError extends EngineValidationError {
   constructor(readonly model: string) {
@@ -232,6 +302,8 @@ export class UnsupportedTtsModelError extends EngineValidationError {
 
 export function resolveTtsAdapter(ttsModel?: string): TTSEngineAdapter {
   if (ttsModel === qwenLocalAdapter.id) return qwenLocalAdapter;
+  // #27：已发布 Voice Profile 生产消费（voiceName 携带 profile:<id>@<version>）
+  if (ttsModel === voiceProfileAdapter.id) return voiceProfileAdapter;
   // 仅白名单内的 Gemini TTS 模型（或未指定时的默认值）走云端；未知 ID 一律拒绝
   if (!ttsModel || GEMINI_TTS_MODELS.includes(ttsModel)) return geminiAdapter;
   throw new UnsupportedTtsModelError(ttsModel);

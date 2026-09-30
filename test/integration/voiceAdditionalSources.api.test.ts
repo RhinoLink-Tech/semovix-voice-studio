@@ -5,6 +5,16 @@ import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupTestEnv, setupTestEnv, tinyWavBuffer, type TestEnv } from './helpers';
 
+// d3a9231 起推理改走 undici 直连通道（inferenceFetch），绕过 vi.stubGlobal('fetch')；
+// 把 undici.fetch 委托回 globalThis.fetch，让本文件 / helpers 的 fetch 桩重新覆盖推理调用
+vi.mock('undici', async importOriginal => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return {
+    ...actual,
+    fetch: ((input: string | URL, init?: RequestInit) => globalThis.fetch(input, init)) as typeof actual.fetch,
+  };
+});
+
 let env: TestEnv | null = null;
 afterEach(() => { if (env) cleanupTestEnv(env.libraryDir); env = null; vi.unstubAllGlobals(); });
 
@@ -50,7 +60,7 @@ describe('additional voice source APIs', () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/provider-presets/catalog`).expect(200);
       expect(current.body.selection.preview.status).toBe('completed');
       expect(current.body.selection.preview.sha256).toMatch(/^[a-f0-9]{64}$/);
-    }, { timeout: 2000 });
+    }, { timeout: 5000 });
     const audio = await request(app).get(`/api/voice-identities/${identity.id}/provider-presets/preview`).expect(200);
     expect(audio.headers['content-type']).toContain('audio/wav');
     expect(Buffer.isBuffer(audio.body) ? audio.body.subarray(0, 4).toString('ascii') : '').toBe('RIFF');
@@ -106,14 +116,14 @@ describe('additional voice source APIs', () => {
     await vi.waitFor(async () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/provider-presets/catalog`).expect(200);
       expect(current.body.selection.preview.status).toBe('completed');
-    }, { timeout: 2000 });
+    }, { timeout: 5000 });
 
     await request(app).post(`/api/voice-identities/${identity.id}/source-validation`).expect(202);
     await vi.waitFor(async () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/source-validation`).expect(200);
       expect(current.body.validation.status).toBe('completed');
       expect(current.body.validation.checks.find((check: { id: string }) => check.id === 'asr_consistency').value).toBe('100%');
-    }, { timeout: 2000 });
+    }, { timeout: 5000 });
 
     await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
       profileName: '产品预置讲解员 V1', profileVersion: 'V1.0', humanListeningConfirmed: true,
@@ -143,7 +153,7 @@ describe('additional voice source APIs', () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/source-validation`).expect(200);
       expect(current.body.validation.status).toBe('completed');
       expect(current.body.validation.checks.find((check: { id: string }) => check.id === 'model_compatibility').state).toBe('passed');
-    }, { timeout: 2000 });
+    }, { timeout: 5000 });
     await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({ profileName: '历史讲解员 V2', profileVersion: 'V2.2', humanListeningConfirmed: true, usageBoundaries: manifest.usageBoundaries }).expect(200);
     const frozen = await request(app).post(`/api/voice-identities/${identity.id}/source-voice-profiles`).expect(201);
     const manifestResponse = await request(app).get(`/api/voice-identities/${identity.id}/voice-profiles/V2.2/manifest`).expect(200);

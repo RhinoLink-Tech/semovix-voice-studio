@@ -112,7 +112,7 @@ libraryRouter.post('/library/items', uploadSingle('audio'), (req, res) => {
     res.json({ item: saved });
   } catch (error: any) {
     console.error('Library save error:', error);
-    res.status(500).json({ error: error.message || 'Failed to save item.' });
+    res.status(500).json({ error: error.message || 'Failed to save item.', code: 'item_save_failed' });
   }
 });
 
@@ -120,7 +120,7 @@ libraryRouter.post('/library/items', uploadSingle('audio'), (req, res) => {
 libraryRouter.patch('/library/items/:id', (req, res) => {
   if (!requireSafeId(res, req.params.id)) return;
   const updated = updateItem(req.params.id, req.body || {});
-  if (!updated) return res.status(404).json({ error: 'Item not found.' });
+  if (!updated) return res.status(404).json({ error: 'Item not found.', code: 'item_not_found' });
   res.json({ item: updated });
 });
 
@@ -178,7 +178,7 @@ libraryRouter.put('/library/items/:id/audio', uploadSingle('audio'), (req, res) 
     res.json({ item: updated, fileSize: written.size });
   } catch (error: any) {
     console.error('Library audio overwrite error:', error);
-    res.status(500).json({ error: error.message || 'Failed to overwrite audio file.' });
+    res.status(500).json({ error: error.message || 'Failed to overwrite audio file.', code: 'item_overwrite_failed' });
   }
 });
 
@@ -186,7 +186,7 @@ libraryRouter.put('/library/items/:id/audio', uploadSingle('audio'), (req, res) 
 libraryRouter.delete('/library/items/:id', (req, res) => {
   if (!requireSafeId(res, req.params.id)) return;
   const ok = deleteItem(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Item not found.' });
+  if (!ok) return res.status(404).json({ error: 'Item not found.', code: 'item_not_found' });
   res.json({ items: listItems() });
 });
 
@@ -231,7 +231,7 @@ libraryRouter.post('/library/tags', (req, res) => {
 libraryRouter.get('/library/file/:id', (req, res) => {
   if (!requireSafeId(res, req.params.id)) return;
   const file = readItemFile(req.params.id);
-  if (!file) return res.status(404).json({ error: 'Audio file not found.' });
+  if (!file) return res.status(404).json({ error: 'Audio file not found.', code: 'audio_not_found' });
   const mime = file.fileName.endsWith('.wav') ? 'audio/wav'
     : file.fileName.endsWith('.mp3') ? 'audio/mpeg'
     : file.fileName.endsWith('.webm') ? 'audio/webm'
@@ -250,12 +250,12 @@ libraryRouter.get('/library/folders', (_req, res) => {
 libraryRouter.post('/library/folders', (req, res) => {
   try {
     const { id, name, color, createdAt } = req.body || {};
-    if (!id || !name) return res.status(400).json({ error: 'id and name are required.' });
+    if (!id || !name) return res.status(400).json({ error: 'id and name are required.', code: 'invalid_request' });
     if (!requireSafeId(res, id, '文件夹')) return;
     const folder = saveFolder({ id, name, color, createdAt });
     res.json({ folder, folders: listFolders() });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to save folder.' });
+    res.status(500).json({ error: error.message || 'Failed to save folder.', code: 'folder_save_failed' });
   }
 });
 
@@ -270,7 +270,7 @@ libraryRouter.post('/library/folders/replace', (req, res) => {
     }
     res.json({ folders: replaceFolders(folders) });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to replace folders.' });
+    res.status(500).json({ error: error.message || 'Failed to replace folders.', code: 'folder_replace_failed' });
   }
 });
 

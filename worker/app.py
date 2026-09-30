@@ -10,13 +10,26 @@ Semovix Voice Studio - Python FastAPI Worker（硬性约束 #14）
 
 引擎冷启动状态机（P01）：
 
-    cold ──warmup──▶ loading ──成功──▶ ready
-                        │
-                        └──失败──▶ error ──再次 warmup──▶ loading（自动重试）
+    cold ──warmup──▶ loading ──成功──▶ ready ──unload/空闲淘汰──▶ cold
+                        │                │
+                        └──失败──▶ error └──推理 OOM──▶ error（载荷已释放，显式 warmup 重载）
+                            └─再次 warmup─▶ loading
+
+模型生命周期与资源治理（P0-B #19-23）：
+  - #19 /health 每引擎自述 capabilities（design/clone/presetVoice/transcription、
+    languages、supportsSeed/supportsReferenceAudio/supportsStreaming），页面不得按模型名猜能力
+  - #20 /health 每引擎上报 modelInfo（repoId/revision/本地权重指纹/runtime/torch 版本/设备），
+    供 Node 冻结进 Voice Profile Manifest，防静默升级
+  - #21 显式 POST /unload/{segment}、空闲自动卸载（SEMOVIX_IDLE_UNLOAD_SECONDS，0 关闭）、
+    推理 OOM 后释放载荷且不自动重启循环
+  - #22 折中方案：大型 Qwen 模型（qwen_tts/voice_design/voice_clone）同一时刻只允许一个常驻，
+    切换（warmup 另一个大模型）即显式卸载既有常驻者；在途推理结束后再卸载（延迟淘汰）
+  - #23 每引擎推理并发 = 1（infer_lock）；推理在 FastAPI 线程池执行，不阻塞事件循环（/health 永远可达）
+  - #30 /health 顶层上报 protocolVersion（协议加法演进；Node 侧低于门槛仅日志提示，不伪装兼容）
 
   - GET  /health          永不触发加载；进程可达即 200，如实上报各引擎 state
   - POST /warmup/qwen     ready → 200；cold/loading → 202 {retry:true}；error → 503 {retry:true}（同时触发重载）
-  - POST /warmup/whisper  同上
+  - POST /unload/qwen     ready 且空闲 → 200 {state:"cold"}；推理中 → 409 engine_busy
   - GET  /voices          不触发加载；未就绪 → 503 engine_not_ready
   - POST /tts/qwen        不触发加载；未就绪 → 503 engine_not_ready
   - POST /asr/whisper     不触发加载；未就绪 → 503 engine_not_ready
@@ -25,14 +38,18 @@ Semovix Voice Studio - Python FastAPI Worker（硬性约束 #14）
 """
 from __future__ import annotations
 
+import contextlib
+import gc
+import hashlib
 import io
 import os
 import threading
+import time
 import wave
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, UploadFile
@@ -53,7 +70,29 @@ VOICE_DESIGN_CKPT = os.environ.get("SEMOVIX_VOICE_DESIGN_CKPT", "Qwen/Qwen3-TTS-
 VOICE_CLONE_CKPT = os.environ.get("SEMOVIX_VOICE_CLONE_CKPT", "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 ASR_MODEL_ID = os.environ.get("SEMOVIX_ASR_MODEL", "openai/whisper-large-v3-turbo")
 
-app = FastAPI(title="Semovix Voice Worker", version="1.1.0")
+# #20 版本精确锁定：可选 pin 到 HF 具体 revision（commit 或 tag）。qwen-tts 0.1.1 的
+# from_pretrained 会把 **kwargs 原样透传给 transformers AutoModel，revision= 直达 HF。
+TTS_REVISION = os.environ.get("SEMOVIX_TTS_REVISION") or None
+VOICE_DESIGN_REVISION = os.environ.get("SEMOVIX_VOICE_DESIGN_REVISION") or None
+VOICE_CLONE_REVISION = os.environ.get("SEMOVIX_VOICE_CLONE_REVISION") or None
+ASR_REVISION = os.environ.get("SEMOVIX_ASR_REVISION") or None
+_REVISIONS: dict[str, Optional[str]] = {
+    "qwen_tts": TTS_REVISION,
+    "voice_design": VOICE_DESIGN_REVISION,
+    "voice_clone": VOICE_CLONE_REVISION,
+    "whisper_asr": ASR_REVISION,
+}
+
+# #21 空闲自动卸载：引擎 ready 且无在途推理超过 N 秒 → 释放权重（0 = 关闭）。
+IDLE_UNLOAD_SECONDS = float(os.environ.get("SEMOVIX_IDLE_UNLOAD_SECONDS", "1800"))
+# 巡检间隔（默认取空闲阈值的 1/10，夹在 [5s, 60s]）；测试可调小。
+IDLE_SWEEP_INTERVAL = float(os.environ.get("SEMOVIX_IDLE_SWEEP_INTERVAL", "0") or 0) or max(5.0, min(60.0, IDLE_UNLOAD_SECONDS / 10))
+
+# #30 Worker 协议版本：/health 顶层自述，Node 侧据此判断新特性语义是否可用（加法演进）。
+# 3（P1 #32）：新增 /models/* 模型下载任务端点。
+WORKER_PROTOCOL_VERSION = 3
+
+app = FastAPI(title="Semovix Voice Worker", version="1.2.0")
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +113,13 @@ class EngineState:
     loaded_at: Optional[str] = None
     load_attempts: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # #23 每引擎推理并发 = 1：所有推理端点在 infer_lock 内执行
+    infer_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    in_flight: int = 0  # 当前在途推理数（0/1，受 infer_lock 约束）
+    # #21 生命周期记账
+    last_used_at: Optional[str] = None
+    # #22 延迟淘汰标记：切换大模型时对方在途推理，结束后由 _inference 收尾卸载
+    evict_pending: bool = False
     # 以下载荷仅在 state == "ready" 时有效
     model: Any = None
     processor: Any = None
@@ -81,16 +127,26 @@ class EngineState:
     languages: list = field(default_factory=list)
     device: Optional[str] = None
     dtype: Any = None
+    dtype_name: Optional[str] = None
     checkpoint: Optional[str] = None
+    # #20 模型身份：本地权重指纹（加载时计算）；revision 来自环境变量 pin
+    fingerprint: Optional[str] = None
+    revision: Optional[str] = None
 
 
 _TTS = EngineState(id="qwen_tts")
 _VOICE_DESIGN = EngineState(id="voice_design")
-_VOICE_DESIGN_INFER_LOCK = threading.Lock()
 _VOICE_CLONE = EngineState(id="voice_clone")
-_VOICE_CLONE_INFER_LOCK = threading.Lock()
 _ASR = EngineState(id="whisper_asr")
 _ENGINES: dict[str, EngineState] = {"qwen_tts": _TTS, "voice_design": _VOICE_DESIGN, "voice_clone": _VOICE_CLONE, "whisper_asr": _ASR}
+
+# #22 折中方案：大型 Qwen 模型集合——同一时刻只允许一个常驻
+_BIG_ENGINES = ("qwen_tts", "voice_design", "voice_clone")
+
+
+def _all_engine_states() -> list[EngineState]:
+    """经模块全局取引擎（测试会 monkeypatch _TTS 等引用，不能缓存成局部列表）"""
+    return [_TTS, _VOICE_DESIGN, _VOICE_CLONE, _ASR]
 
 
 def _pick_device() -> str:
@@ -111,12 +167,13 @@ def _build_tts() -> dict[str, Any]:
     device = _pick_device()
     # 与既有 qwen-tts-demo 运行参数一致：MPS + bf16 + 不用 flash-attn
     dtype = torch.bfloat16 if device == "mps" else torch.float32
-    tts = Qwen3TTSModel.from_pretrained(TTS_CKPT, device_map=device, dtype=dtype, attn_implementation=None)
+    tts = Qwen3TTSModel.from_pretrained(TTS_CKPT, device_map=device, dtype=dtype, attn_implementation=None, revision=TTS_REVISION)
     return {
         "model": tts,
         "speakers": list(tts.get_supported_speakers() or []),
         "languages": list(tts.get_supported_languages() or []),
         "device": device,
+        "dtype": dtype,
         "checkpoint": TTS_CKPT,
     }
 
@@ -129,9 +186,9 @@ def _build_voice_design() -> dict[str, Any]:
     device = _pick_device()
     dtype = torch.bfloat16 if device == "mps" else torch.float32
     model = Qwen3TTSModel.from_pretrained(
-        VOICE_DESIGN_CKPT, device_map=device, dtype=dtype, attn_implementation=None
+        VOICE_DESIGN_CKPT, device_map=device, dtype=dtype, attn_implementation=None, revision=VOICE_DESIGN_REVISION
     )
-    return {"model": model, "device": device, "checkpoint": VOICE_DESIGN_CKPT}
+    return {"model": model, "device": device, "dtype": dtype, "checkpoint": VOICE_DESIGN_CKPT}
 
 
 def _build_voice_clone() -> dict[str, Any]:
@@ -142,9 +199,9 @@ def _build_voice_clone() -> dict[str, Any]:
     device = _pick_device()
     dtype = torch.bfloat16 if device == "mps" else torch.float32
     model = Qwen3TTSModel.from_pretrained(
-        VOICE_CLONE_CKPT, device_map=device, dtype=dtype, attn_implementation=None
+        VOICE_CLONE_CKPT, device_map=device, dtype=dtype, attn_implementation=None, revision=VOICE_CLONE_REVISION
     )
-    return {"model": model, "device": device, "checkpoint": VOICE_CLONE_CKPT}
+    return {"model": model, "device": device, "dtype": dtype, "checkpoint": VOICE_CLONE_CKPT}
 
 
 def _build_asr() -> dict[str, Any]:
@@ -154,12 +211,262 @@ def _build_asr() -> dict[str, Any]:
 
     device = _pick_device()
     dtype = torch.float16 if device == "mps" else torch.float32
-    processor = WhisperProcessor.from_pretrained(ASR_MODEL_ID)
-    model = WhisperForConditionalGeneration.from_pretrained(ASR_MODEL_ID, torch_dtype=dtype).to(device)
+    kwargs: dict[str, Any] = {"revision": ASR_REVISION} if ASR_REVISION else {}
+    processor = WhisperProcessor.from_pretrained(ASR_MODEL_ID, **kwargs)
+    model = WhisperForConditionalGeneration.from_pretrained(ASR_MODEL_ID, torch_dtype=dtype, **kwargs).to(device)
     return {"model": model, "processor": processor, "device": device, "dtype": dtype}
 
 
 _BUILDERS: dict[str, Callable[[], dict[str, Any]]] = {"qwen_tts": _build_tts, "voice_design": _build_voice_design, "voice_clone": _build_voice_clone, "whisper_asr": _build_asr}
+
+
+# ---------------------------------------------------------------------------
+# #20 模型身份：本地权重指纹与运行时版本
+# ---------------------------------------------------------------------------
+
+_WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pt", ".pth", ".onnx", ".msgpack", ".h5"}
+_FINGERPRINT_META_BUDGET = 8 * 1024 * 1024  # 小文件（config/tokenizer）按内容哈希的总预算
+_VERSION_CACHE: dict[str, Optional[str]] = {}
+
+
+def _fingerprint_dir(path: Path) -> Optional[str]:
+    """
+    本地 checkpoint 目录指纹（#20）：小文件（config/tokenizer，≤8MB 总量）按内容 SHA-256，
+    权重文件按 (相对路径, 大小, mtime_ns) 记账——多 GB 权重不做全量内容哈希，
+    权重字节级变化会体现在 size/mtime 上，足以发现"目录被静默升级/替换"。
+    """
+    try:
+        files = [f for f in sorted(path.rglob("*")) if f.is_file()][:512]
+    except OSError:
+        return None
+    digest = hashlib.sha256()
+    meta_bytes = 0
+    for f in files:
+        try:
+            rel = str(f.relative_to(path))
+            stat = f.stat()
+        except OSError:
+            continue
+        if f.suffix.lower() in _WEIGHT_SUFFIXES or stat.st_size > 4 * 1024 * 1024:
+            digest.update(f"{rel}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+            continue
+        if meta_bytes + stat.st_size > _FINGERPRINT_META_BUDGET:
+            digest.update(f"{rel}|{stat.st_size}|{stat.st_mtime_ns}\n".encode())
+            continue
+        try:
+            content_digest = hashlib.sha256(f.read_bytes()).hexdigest()
+        except OSError:
+            content_digest = "unreadable"
+        meta_bytes += stat.st_size
+        digest.update(f"{rel}|{stat.st_size}|{content_digest}\n".encode())
+    return digest.hexdigest()[:16] if files else None
+
+
+def _package_version(dist: str) -> Optional[str]:
+    if dist not in _VERSION_CACHE:
+        try:
+            from importlib import metadata
+
+            _VERSION_CACHE[dist] = metadata.version(dist)
+        except Exception:  # noqa: BLE001 - 环境未装该包时如实报 None
+            _VERSION_CACHE[dist] = None
+    return _VERSION_CACHE[dist]
+
+
+def _torch_version() -> Optional[str]:
+    try:
+        import torch
+
+        return getattr(torch, "__version__", None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _runtime_version(es_id: str) -> Optional[str]:
+    """推理运行时版本：TTS 引擎报 qwen-tts 包，Whisper 报 transformers 包"""
+    return _package_version("qwen-tts" if es_id != "whisper_asr" else "transformers")
+
+
+def _model_info(es: EngineState, default_repo: str) -> dict[str, Any]:
+    repo = es.checkpoint or default_repo
+    local_path: Optional[str] = None
+    try:
+        if repo and Path(repo).is_dir():
+            local_path = repo
+    except OSError:
+        local_path = None
+    return {
+        "provider": "OpenAI" if es.id == "whisper_asr" else "Qwen",
+        "repoId": repo,
+        "revision": es.revision or _REVISIONS.get(es.id),
+        "localPath": local_path,
+        "localPathFingerprint": es.fingerprint,
+        "runtimeVersion": _runtime_version(es.id),
+        "torchVersion": _torch_version(),
+        "deviceType": es.device,
+        "dtype": es.dtype_name,
+    }
+
+
+# ---------------------------------------------------------------------------
+# #19 引擎能力合同：模型自述能力，页面不得按模型名猜测
+# ---------------------------------------------------------------------------
+
+_ENGINE_CAPABILITIES: dict[str, dict[str, Any]] = {
+    "qwen_tts": {
+        "presetVoice": True, "design": False, "clone": False, "transcription": False,
+        "languages": [],  # 目录只有运行时权威：ready 后由模型目录填充
+        "sampleRateHz": 24000,
+        "supportsSeed": False, "supportsReferenceAudio": False, "supportsStreaming": False,
+    },
+    "voice_design": {
+        "presetVoice": False, "design": True, "clone": False, "transcription": False,
+        "languages": ["Chinese", "English", "Auto"],
+        "sampleRateHz": 24000,
+        "supportsSeed": True, "supportsReferenceAudio": False, "supportsStreaming": False,
+    },
+    "voice_clone": {
+        "presetVoice": False, "design": False, "clone": True, "transcription": False,
+        "languages": ["Chinese", "English", "Auto"],
+        "sampleRateHz": 24000,
+        "supportsSeed": False, "supportsReferenceAudio": True, "supportsStreaming": False,
+    },
+    "whisper_asr": {
+        "presetVoice": False, "design": False, "clone": False, "transcription": True,
+        "languages": ["auto", "zh", "en"],
+        "sampleRateHz": None,
+        "supportsSeed": False, "supportsReferenceAudio": False, "supportsStreaming": False,
+    },
+}
+
+
+def _capabilities(es: EngineState) -> dict[str, Any]:
+    caps = dict(_ENGINE_CAPABILITIES[es.id])
+    if caps["languages"] == [] and es.languages:
+        caps["languages"] = list(es.languages)  # qwen_tts：以运行时目录为准
+    return caps
+
+
+# ---------------------------------------------------------------------------
+# #21/#23 卸载、显存释放、推理串行化
+# ---------------------------------------------------------------------------
+
+
+def _free_device_memory() -> None:
+    """尽力释放：Python 引用 + CUDA/MPS 分配器缓存。失败不影响状态机。"""
+    gc.collect()
+    try:
+        import torch
+
+        if hasattr(torch, "cuda") and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _clear_payload(es: EngineState) -> None:
+    es.model = None
+    es.processor = None
+    es.speakers = []
+    es.languages = []
+    es.device = None
+    es.dtype = None
+    es.dtype_name = None
+    es.checkpoint = None
+    es.fingerprint = None
+    es.revision = None
+
+
+def _release_engine(es: EngineState, *, to_state: str, error: Optional[str] = None) -> str:
+    """
+    释放引擎载荷并转入 to_state。调用方不得持有 es.lock / es.infer_lock。
+    推理在途（infer_lock 被占）时标记 evict_pending 并保持原状态，由 _inference 收尾卸载。
+    """
+    with es.lock:
+        if es.state not in ("ready", "error"):
+            return es.state
+        if not es.infer_lock.acquire(timeout=2.0):
+            es.evict_pending = True
+            return es.state
+        try:
+            if es.in_flight > 0:  # 防御：infer_lock 已持有则不应发生
+                es.evict_pending = True
+                return es.state
+            _clear_payload(es)
+            es.state = to_state
+            es.error = error
+            es.loaded_at = None
+            es.last_used_at = None
+            es.evict_pending = False
+        finally:
+            es.infer_lock.release()
+    _free_device_memory()
+    return to_state
+
+
+def _unload_engine(es: EngineState) -> str:
+    """#21 主动卸载：ready/error → cold（释放权重与显存缓存）"""
+    return _release_engine(es, to_state="cold")
+
+
+def _evict_other_big_engines(exclude_id: str) -> None:
+    """#22 折中方案：切换大模型时显式卸载既有常驻者；在途推理 → 延迟淘汰"""
+    for es in (_TTS, _VOICE_DESIGN, _VOICE_CLONE):
+        if es.id == exclude_id:
+            continue
+        with es.lock:
+            if es.state != "ready":
+                es.evict_pending = False
+                continue
+            if es.in_flight > 0:
+                es.evict_pending = True
+                print(f"[worker] {es.id} 在途推理，标记延迟卸载（切换到 {exclude_id}）", flush=True)
+                continue
+        before = es.state
+        result = _unload_engine(es)
+        if result == "cold" and before == "ready":
+            print(f"[worker] {es.id} 已卸载（切换到 {exclude_id}，单常驻约束）", flush=True)
+
+
+@contextlib.contextmanager
+def _inference(es: EngineState) -> Iterator[None]:
+    """
+    #23 每引擎并发 = 1：推理端点统一经此上下文进入（串行 + in_flight/last_used_at 记账）。
+    退出后若带 evict_pending（#22 延迟淘汰），在锁外异步卸载，避免与 infer_lock 嵌套死锁。
+    拿到锁后复核 ready：排队等待期间引擎可能被切换卸载，避免对已释放载荷产生误导性崩溃。
+    """
+    with es.infer_lock:
+        if es.state != "ready":
+            raise RuntimeError(f"{es.id} 引擎在排队期间被卸载（state={es.state}），请重新预热后重试")
+        es.in_flight += 1
+        es.last_used_at = _now_iso()
+        try:
+            yield
+        finally:
+            es.in_flight -= 1
+            evict = es.evict_pending
+    if evict:
+        threading.Thread(target=_unload_engine, args=(es,), daemon=True, name=f"evict-{es.id}").start()
+
+
+_OOM_MARKERS = ("out of memory", "cuda oom", "resourceexhausted", "显存不足", "内存不足", "mps backend out of", "allocation on device")
+
+
+def _looks_like_oom(exc: BaseException) -> bool:
+    """#21/#23 OOM 特征识别：异常类名（OutOfMemoryError/MemoryError）或消息特征"""
+    name = type(exc).__name__.lower()
+    if "outofmemory" in name or name == "memoryerror":
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in _OOM_MARKERS)
+
+
+def _handle_oom(es: EngineState, exc: BaseException) -> None:
+    """#21 OOM 后资源清理：释放载荷 → state=error；恢复靠显式 warmup，绝不自动重启循环"""
+    print(f"[worker] {es.id} 推理显存不足，释放模型载荷：{exc}", flush=True)
+    _release_engine(es, to_state="error", error=f"显存不足（已自动卸载模型）：{type(exc).__name__}: {exc}")
 
 
 def _load_engine(es: EngineState) -> None:
@@ -179,11 +486,24 @@ def _load_engine(es: EngineState) -> None:
     es.languages = payload.get("languages", [])
     es.device = payload.get("device")
     es.dtype = payload.get("dtype")
+    dtype_value = payload.get("dtype")
+    es.dtype_name = str(dtype_value) if dtype_value is not None else None
     es.checkpoint = payload.get("checkpoint")
+    es.revision = _REVISIONS.get(es.id)
     es.error = None
+    # #20 本地目录 → 计算权重指纹（加载线程内做，不挡 /health）
+    if es.checkpoint:
+        try:
+            if Path(es.checkpoint).is_dir():
+                es.fingerprint = _fingerprint_dir(Path(es.checkpoint))
+        except OSError:
+            es.fingerprint = None
     es.loaded_at = _now_iso()
     es.state = "ready"
     print(f"[worker] {es.id} 就绪 device={es.device}", flush=True)
+    # #22 单常驻兜底：并发 warmup 竞态下可能出现两个大模型先后就绪，后到者驱逐先到者
+    if es.id in _BIG_ENGINES:
+        _evict_other_big_engines(es.id)
 
 
 def _request_load(es: EngineState) -> None:
@@ -195,7 +515,10 @@ def _request_load(es: EngineState) -> None:
         es.error = None
         es.load_attempts += 1
         es.load_started_at = _now_iso()
-        threading.Thread(target=_load_engine, args=(es,), daemon=True, name=f"load-{es.id}").start()
+    # #22 折中方案：加载大模型前显式卸载其他常驻大模型（锁外执行，避免与 es.lock 嵌套）
+    if es.id in _BIG_ENGINES:
+        _evict_other_big_engines(es.id)
+    threading.Thread(target=_load_engine, args=(es,), daemon=True, name=f"load-{es.id}").start()
 
 
 def _snapshot(es: EngineState) -> dict[str, Any]:
@@ -206,10 +529,22 @@ def _snapshot(es: EngineState) -> dict[str, Any]:
         "loadStartedAt": es.load_started_at,
         "loadedAt": es.loaded_at,
         "loadAttempts": es.load_attempts,
+        # #21 生命周期记账
+        "lastUsedAt": es.last_used_at,
+        "inFlight": es.in_flight,
+        "evictPending": es.evict_pending,
+        # #19 能力合同 / #20 模型身份
+        "capabilities": _capabilities(es),
+        "modelInfo": _model_info(es, _default_repo(es.id)),
     }
 
 
+def _default_repo(es_id: str) -> str:
+    return {"qwen_tts": TTS_CKPT, "voice_design": VOICE_DESIGN_CKPT, "voice_clone": VOICE_CLONE_CKPT, "whisper_asr": ASR_MODEL_ID}[es_id]
+
+
 _WARMUP_PATH = {"qwen_tts": "qwen", "voice_design": "voice-design", "voice_clone": "voice-clone", "whisper_asr": "whisper"}
+_UNLOAD_PATH = _WARMUP_PATH  # 卸载路由段与预热一致：/unload/{qwen|voice-design|voice-clone|whisper}
 
 
 def _require_ready(es: EngineState) -> None:
@@ -226,6 +561,91 @@ def _require_ready(es: EngineState) -> None:
                 "retry": es.state in ("cold", "loading"),
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# 进程内存采样（#21：UI 能看到当前哪个模型占着资源）
+# ---------------------------------------------------------------------------
+
+_MEM_LOCK = threading.Lock()
+_MEM_CACHE: dict[str, Any] = {"at": 0.0, "residentMb": None, "peakMb": None}
+
+
+def _process_memory() -> dict[str, Optional[float]]:
+    """进程 RSS（5s 缓存；psutil 可得则用之）与峰值 RSS。失败如实报 None。"""
+    now = time.monotonic()
+    with _MEM_LOCK:
+        if now - float(_MEM_CACHE["at"]) < 5.0:
+            return {"residentMb": _MEM_CACHE["residentMb"], "peakMb": _MEM_CACHE["peakMb"]}
+    resident: Optional[float] = None
+    peak: Optional[float] = None
+    try:
+        import resource
+
+        raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        peak = raw / (1024 * 1024) if os.uname().sysname == "Darwin" else raw / 1024
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import psutil
+
+        resident = psutil.Process().memory_info().rss / (1024 * 1024)
+        if peak is None:
+            peak = psutil.Process().memory_info()._asdict().get("vms", 0) / (1024 * 1024) or None
+    except Exception:  # noqa: BLE001
+        pass
+    if resident is None:
+        try:
+            import subprocess
+
+            out = subprocess.run(  # noqa: S603 - 固定参数调用本机 ps
+                ["ps", "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+            resident = int(out) / 1024.0  # ps 报 KB
+        except Exception:  # noqa: BLE001
+            pass
+    with _MEM_LOCK:
+        _MEM_CACHE.update({"at": now, "residentMb": resident, "peakMb": peak})
+    return {"residentMb": resident, "peakMb": peak}
+
+
+def _sweep_idle_once(now: Optional[float] = None) -> list[str]:
+    """#21 空闲巡检一轮：ready 且无在途推理、超过阈值未使用的大模型 → 卸载。返回被卸载的引擎 id。"""
+    unloaded: list[str] = []
+    threshold = IDLE_UNLOAD_SECONDS  # 读模块全局：测试可 monkeypatch
+    if threshold <= 0:
+        return unloaded
+    now = now if now is not None else time.time()
+    for es in _all_engine_states():
+        with es.lock:
+            if es.state != "ready" or es.in_flight > 0 or es.evict_pending:
+                continue
+            stamp = es.last_used_at or es.loaded_at
+            if not stamp:
+                continue
+            try:
+                last_use = datetime.fromisoformat(stamp).timestamp()
+            except ValueError:
+                continue
+            if now - last_use < threshold:
+                continue
+        if _unload_engine(es) == "cold":
+            unloaded.append(es.id)
+            print(f"[worker] {es.id} 空闲超过 {threshold:.0f}s，自动卸载", flush=True)
+    return unloaded
+
+
+def _idle_sweeper_loop() -> None:
+    while True:
+        time.sleep(IDLE_SWEEP_INTERVAL)
+        try:
+            _sweep_idle_once()
+        except Exception as e:  # noqa: BLE001 - 巡检线程绝不带崩进程
+            print(f"[worker] 空闲巡检异常: {e}", flush=True)
+
+
+if IDLE_UNLOAD_SECONDS > 0:
+    threading.Thread(target=_idle_sweeper_loop, daemon=True, name="idle-sweeper").start()
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +688,59 @@ def _float_to_wav_bytes(wav: Any, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def _compress_reference_silence(
+    speech: Any, sr: int, top_db: float = 40.0, max_pause_s: float = 0.8, keep_pause_s: float = 0.3
+) -> Any:
+    """裁掉克隆参考音频的首尾静音，并把内部长停顿压到 keep_pause_s。
+
+    现场录音常夹着 10s+ 的环境静音，ICL 克隆会把"长时间沉默"一并学进语速，
+    输出被拖长数倍并推高 max_new_tokens 消耗（实测 23s 参考里 ~19s 静音 →
+    42 字文本生成 38.8s）。能量低于峰值 -top_db 的帧视为静音；压缩结果不足
+    1s 时原样返回，避免误伤低音量连续语音。纯 numpy 向量化实现，不依赖
+    librosa（保持 /tts/voice-clone 测试可用 FakeLibrosaModule）。静音切口
+    落在 -topdB 噪声底上，且参考音频随后经过 codec 编码，不做淡入淡出。
+    """
+    import numpy as np
+
+    arr = np.asarray(speech, dtype=np.float32)
+    frame, hop = 2048, 512
+    if sr <= 0 or arr.size < frame * 2:
+        return speech
+    windows = np.lib.stride_tricks.sliding_window_view(arr, frame)[::hop]
+    rms = np.sqrt(np.mean(np.square(windows), axis=1))
+    peak = float(rms.max())
+    if peak <= 0:
+        return speech
+    voiced = rms > peak * (10.0 ** (-top_db / 20.0))
+    if not bool(voiced.any()):
+        return speech
+
+    keep = np.zeros(arr.size, dtype=bool)
+    idx = np.flatnonzero(voiced)
+    for start in idx.tolist():
+        keep[start * hop : start * hop + frame] = True
+
+    padded = np.concatenate(([0], keep.astype(np.int8), [0]))
+    bounds = np.flatnonzero(np.diff(padded))  # 交替出现 True 段的 (start, end)
+    segments = [(int(bounds[i]), int(bounds[i + 1])) for i in range(0, bounds.size, 2)]
+
+    silence_cap = int(round(keep_pause_s * sr))
+    max_pause = int(round(max_pause_s * sr))
+    pieces = []
+    prev_end: Optional[int] = None
+    for seg_start, seg_end in segments:
+        if prev_end is not None:
+            gap = seg_start - prev_end
+            take = gap if gap <= max_pause else min(gap, silence_cap)
+            pieces.append(arr[prev_end : prev_end + take])  # 保留段间自然停顿，超长静音只留开头
+        pieces.append(arr[seg_start:seg_end])
+        prev_end = seg_end
+    result = np.concatenate(pieces) if pieces else arr
+    if result.size < int(round(1.0 * sr)):
+        return speech
+    return result.astype(np.float32, copy=False)
+
+
 @app.post("/tts/qwen")
 def tts_qwen(req: TtsRequest) -> Response:
     _require_ready(_TTS)
@@ -300,17 +773,21 @@ def tts_qwen(req: TtsRequest) -> Response:
         )
 
     try:
-        wavs, sr = _TTS.model.generate_custom_voice(
-            text=req.text.strip(),
-            language=language,
-            speaker=req.speaker,
-            instruct=(req.instruct or "").strip() or None,
-        )
+        with _inference(_TTS):  # #23 并发 = 1 + 使用记账
+            wavs, sr = _TTS.model.generate_custom_voice(
+                text=req.text.strip(),
+                language=language,
+                speaker=req.speaker,
+                instruct=(req.instruct or "").strip() or None,
+            )
         if not wavs:
             raise RuntimeError("模型未返回音频")
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
+        if _looks_like_oom(e):
+            _handle_oom(_TTS, e)  # #21 OOM → 释放载荷，显式 warmup 才重载
+            raise HTTPException(status_code=502, detail={"error": f"显存不足，模型已卸载，请重新预热后重试：{e}", "code": "resource_exhausted", "engine": "qwen_tts"})
         raise HTTPException(status_code=502, detail={"error": f"{type(e).__name__}: {e}", "code": "tts_failed", "engine": "qwen_tts"})
 
     return Response(content=_float_to_wav_bytes(wavs[0], sr), media_type="audio/wav", headers={"X-Sample-Rate": str(sr)})
@@ -322,50 +799,76 @@ def tts_voice_design(req: VoiceDesignRequest) -> Response:
     if req.language not in ("Chinese", "English", "Auto"):
         raise HTTPException(status_code=400, detail={"error": f"不支持的语言: {req.language}", "code": "unsupported_language", "engine": "voice_design"})
     try:
-        with _VOICE_DESIGN_INFER_LOCK:
+        with _inference(_VOICE_DESIGN):  # #23 并发 = 1
             if req.seed is not None:
                 import torch
+
                 torch.manual_seed(req.seed)
             wavs, sr = _VOICE_DESIGN.model.generate_voice_design(
                 text=req.text.strip(), language=req.language, instruct=req.instruct.strip()
             )
         if not wavs:
             raise RuntimeError("模型未返回音频")
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
+        if _looks_like_oom(e):
+            _handle_oom(_VOICE_DESIGN, e)
+            raise HTTPException(status_code=502, detail={"error": f"显存不足，模型已卸载，请重新预热后重试：{e}", "code": "resource_exhausted", "engine": "voice_design"})
         raise HTTPException(status_code=502, detail={"error": f"{type(e).__name__}: {e}", "code": "voice_design_failed", "engine": "voice_design"})
     return Response(content=_float_to_wav_bytes(wavs[0], sr), media_type="audio/wav", headers={"X-Sample-Rate": str(sr)})
 
 
 @app.post("/tts/voice-clone")
-async def tts_voice_clone(
+def tts_voice_clone(
     file: UploadFile,
     text: str = Form(...),
     reference_text: str = Form(...),
     language: str = Form("Chinese"),
 ) -> Response:
-    """用 Base checkpoint 的 ICL reference audio + transcript 生成一次克隆样音。"""
+    """用 Base checkpoint 的 ICL reference audio + transcript 生成一次克隆样音。
+
+    同步端点（#23）：FastAPI 将其放入线程池执行，阻塞推理不再冻结事件循环（/health 永远可达）。
+    """
     _require_ready(_VOICE_CLONE)
     if language not in ("Chinese", "English", "Auto"):
         raise HTTPException(status_code=400, detail={"error": f"不支持的语言: {language}", "code": "unsupported_language", "engine": "voice_clone"})
     if not text.strip() or not reference_text.strip():
         raise HTTPException(status_code=400, detail={"error": "测试文本和参考文本不能为空", "code": "invalid_request", "engine": "voice_clone"})
-    audio_bytes = await file.read()
+    audio_bytes = file.file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail={"error": "参考音频为空", "code": "invalid_request", "engine": "voice_clone"})
     try:
         import librosa
+
         speech, sample_rate = librosa.load(io.BytesIO(audio_bytes), sr=None, mono=True)
         if len(speech) == 0:
             raise ValueError("参考音频没有有效采样")
-        with _VOICE_CLONE_INFER_LOCK:
+        trimmed = _compress_reference_silence(speech, int(sample_rate))
+        if trimmed is not speech and trimmed.size != speech.size:
+            print(
+                f"[worker] 克隆参考静音压缩：{speech.size / sample_rate:.1f}s → {trimmed.size / sample_rate:.1f}s",
+                flush=True,
+            )
+            speech = trimmed
+        # 按文本长度推算生成上限（12Hz codec ≈ 每汉字 3-4 token）：静音占比高的参考
+        # 音频会把 ICL 生成带进"长时间静音"歧途，默认 max_new_tokens=2048（≈170s 音频）
+        # 在慢设备上要跑 20 分钟以上。给足余量后封顶，保证最坏耗时可控、产物不被截断。
+        clone_text = text.strip()
+        max_new_tokens = min(max(len(clone_text) * 6 + 240, 480), 4096)
+        with _inference(_VOICE_CLONE):  # #23 并发 = 1
             wavs, sr = _VOICE_CLONE.model.generate_voice_clone(
-                text=text.strip(), language=language, ref_audio=(speech, sample_rate), ref_text=reference_text.strip()
+                text=clone_text, language=language, ref_audio=(speech, sample_rate),
+                ref_text=reference_text.strip(), max_new_tokens=max_new_tokens,
             )
         if not wavs:
             raise RuntimeError("模型未返回音频")
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
+        if _looks_like_oom(e):
+            _handle_oom(_VOICE_CLONE, e)
+            raise HTTPException(status_code=502, detail={"error": f"显存不足，模型已卸载，请重新预热后重试：{e}", "code": "resource_exhausted", "engine": "voice_clone"})
         raise HTTPException(status_code=502, detail={"error": f"{type(e).__name__}: {e}", "code": "voice_clone_failed", "engine": "voice_clone"})
     return Response(content=_float_to_wav_bytes(wavs[0], sr), media_type="audio/wav", headers={"X-Sample-Rate": str(sr)})
 
@@ -376,13 +879,14 @@ async def tts_voice_clone(
 
 
 @app.post("/asr/whisper")
-async def asr_whisper(file: UploadFile, language: str = Form("auto")) -> JSONResponse:
+def asr_whisper(file: UploadFile, language: str = Form("auto")) -> JSONResponse:
+    """同步端点（#23）：阻塞推理放线程池，/health 与其他引擎不被冻结。"""
     _require_ready(_ASR)
 
     if language not in ("auto", "zh", "en"):
         raise HTTPException(status_code=400, detail={"error": f"不支持的语言: {language}", "code": "unsupported_language", "engine": "whisper_asr"})
 
-    audio_bytes = await file.read()
+    audio_bytes = file.file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail={"error": "音频文件为空", "code": "invalid_request", "engine": "whisper_asr"})
 
@@ -393,30 +897,34 @@ async def asr_whisper(file: UploadFile, language: str = Form("auto")) -> JSONRes
         speech, _ = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
         duration = len(speech) / 16000.0
 
-        processor, model = _ASR.processor, _ASR.model
-        device, dtype = _ASR.device, _ASR.dtype
-        inputs = processor(speech, sampling_rate=16000, return_tensors="pt")
-        input_features = inputs.input_features.to(device, dtype)
+        with _inference(_ASR):  # #23 Whisper 并发 = 1
+            processor, model = _ASR.processor, _ASR.model
+            device, dtype = _ASR.device, _ASR.dtype
+            inputs = processor(speech, sampling_rate=16000, return_tensors="pt")
+            input_features = inputs.input_features.to(device, dtype)
 
-        gen_kwargs: dict[str, Any] = dict(task="transcribe")
-        if duration > 30:
-            gen_kwargs["return_timestamps"] = True
-        if language != "auto":
-            gen_kwargs["language"] = language
+            gen_kwargs: dict[str, Any] = dict(task="transcribe")
+            if duration > 30:
+                gen_kwargs["return_timestamps"] = True
+            if language != "auto":
+                gen_kwargs["language"] = language
 
-        with torch.no_grad():
-            predicted_ids = model.generate(input_features, **gen_kwargs)
-        text = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
+            with torch.no_grad():
+                predicted_ids = model.generate(input_features, **gen_kwargs)
+            text = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
+        if _looks_like_oom(e):
+            _handle_oom(_ASR, e)
+            raise HTTPException(status_code=502, detail={"error": f"显存不足，模型已卸载，请重新预热后重试：{e}", "code": "resource_exhausted", "engine": "whisper_asr"})
         raise HTTPException(status_code=502, detail={"error": f"{type(e).__name__}: {e}", "code": "asr_failed", "engine": "whisper_asr"})
 
     return JSONResponse({"success": True, "transcript": text, "language": language, "duration": round(duration, 2)})
 
 
 # ---------------------------------------------------------------------------
-# 目录 / 健康 / 预热
+# 目录 / 健康 / 预热 / 卸载
 # ---------------------------------------------------------------------------
 
 
@@ -439,11 +947,19 @@ def health() -> JSONResponse:
     return JSONResponse(
         {
             "ok": True,
+            # #30 协议版本：Node 侧低于门槛时仅日志提示，不伪装兼容
+            "protocolVersion": WORKER_PROTOCOL_VERSION,
             "engines": {
                 "qwen_tts": {**_snapshot(_TTS), "checkpoint": _TTS.checkpoint or TTS_CKPT},
                 "voice_design": {**_snapshot(_VOICE_DESIGN), "checkpoint": _VOICE_DESIGN.checkpoint or VOICE_DESIGN_CKPT},
                 "voice_clone": {**_snapshot(_VOICE_CLONE), "checkpoint": _VOICE_CLONE.checkpoint or VOICE_CLONE_CKPT},
-                "whisper_asr": {**_snapshot(_ASR), "model": ASR_MODEL_ID},
+                "whisper_asr": {**_snapshot(_ASR), "checkpoint": _ASR.checkpoint or ASR_MODEL_ID, "model": ASR_MODEL_ID},
+            },
+            # #21 进程级资源可见性：RSS/峰值 + 单常驻名单 + 空闲策略
+            "process": {
+                **_process_memory(),
+                "idleUnloadSeconds": IDLE_UNLOAD_SECONDS,
+                "residentBigEngines": [es.id for es in (_TTS, _VOICE_DESIGN, _VOICE_CLONE) if es.state == "ready"],
             },
         }
     )
@@ -486,3 +1002,284 @@ def warmup_voice_clone() -> JSONResponse:
 @app.post("/warmup/whisper")
 def warmup_whisper() -> JSONResponse:
     return _warmup_response(_ASR)
+
+
+@app.post("/unload/{segment}")
+def unload(segment: str) -> JSONResponse:
+    """#21 显式卸载：ready 且无在途推理 → 释放权重与显存、回到 cold（幂等）。"""
+    engine_id = next((eid for eid, seg in _UNLOAD_PATH.items() if seg == segment), None)
+    if engine_id is None:
+        raise HTTPException(status_code=404, detail={"error": f"未知引擎路由: {segment}", "code": "unknown_engine"})
+    es = _ENGINES_BY_ID(engine_id)
+
+    if es.state == "loading":
+        raise HTTPException(status_code=409, detail={"error": f"{engine_id} 正在加载，无法卸载", "code": "engine_loading", "engine": engine_id, "state": es.state})
+    if es.in_flight > 0:
+        raise HTTPException(status_code=409, detail={"error": f"{engine_id} 有在途推理，结束后再卸载", "code": "engine_busy", "engine": engine_id, "state": es.state})
+    result = _unload_engine(es)
+    if result != "cold":
+        # 检查与卸载之间的窗口里开始了新推理：已登记延迟卸载（evict_pending），如实 409
+        raise HTTPException(status_code=409, detail={"error": f"{engine_id} 刚开始新的推理，已登记延迟卸载", "code": "engine_busy", "engine": engine_id, "state": result})
+    return JSONResponse({"engine": engine_id, "state": "cold", "retry": False})
+
+
+def _ENGINES_BY_ID(engine_id: str) -> EngineState:
+    """经模块全局取引擎（测试 monkeypatch 替换 _TTS 等引用后仍生效）"""
+    return {"qwen_tts": _TTS, "voice_design": _VOICE_DESIGN, "voice_clone": _VOICE_CLONE, "whisper_asr": _ASR}[engine_id]
+
+
+# ---------------------------------------------------------------------------
+# 模型下载任务（P1 #32，协议 3）：后台线程执行 snapshot_download
+#
+# Node 的模型下载执行器经 /models/* 驱动：
+#   POST /models/{key}/download {repoId, revision} → 200 {task}（同 key 在途幂等复用）
+#   GET  /models/tasks/{taskId}                    → {task} | 404
+#   POST /models/tasks/{taskId}/cancel             → 202 {task}（协作取消，分片保留可续传）
+# 缓存位置 = HF_HOME 环境变量（Electron 注入托管目录；缺省 ~/.cache/huggingface），
+# 与 Node 侧 registry 扫描的是同一份布局（models--org--name/{refs,snapshots,blobs}）。
+# ---------------------------------------------------------------------------
+
+_MODEL_TASK_LOCK = threading.Lock()
+_MODEL_TASKS: dict[str, dict[str, Any]] = {}
+# key（customVoice/voiceDesign/base/asr）→ 在途 taskId；同 key 只允许一个下载
+_MODEL_ACTIVE_BY_KEY: dict[str, str] = {}
+
+_MODEL_TASK_KEYS = ("customVoice", "voiceDesign", "base", "asr")
+
+
+class _ModelDownloadCancelled(BaseException):
+    """进度回调里抛出以中断 snapshot_download（不吞真实异常）"""
+
+
+class _TaskProgress:
+    """最小 tqdm 替身：把 snapshot_download 的逐文件字节进度喂进任务记账。"""
+
+    def __init__(self, task: dict[str, Any], **kwargs: Any):
+        self._task = task
+
+    def __enter__(self) -> "_TaskProgress":
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        return False
+
+    def update(self, n: int = 1) -> None:
+        if not n:
+            return
+        with _MODEL_TASK_LOCK:
+            task = _MODEL_TASKS.get(self._task["taskId"])
+            if task is not self._task:
+                return  # 任务已被清理：静默停记
+            task["downloadedBytes"] = int(task.get("downloadedBytes", 0)) + int(n)
+            task["updatedAt"] = _now_iso()
+            if task.get("_cancel"):
+                raise _ModelDownloadCancelled()
+
+    def close(self) -> None:
+        pass
+
+    def refresh(self) -> None:
+        pass
+
+    @property
+    def n(self) -> int:
+        return 0
+
+
+def _dir_size_bytes(path: Path) -> Optional[int]:
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                try:
+                    total += entry.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        return None
+    return total
+
+
+# 串行化真实下载：tqdm 替换是进程级的，并发下载会互相记账
+_MODEL_DOWNLOAD_RUN_LOCK = threading.Lock()
+
+
+def _task_tqdm_class(task: dict[str, Any]) -> type:
+    """构造绑定到指定下载任务的 tqdm 替身类。
+
+    必须是“类”而非工厂函数：tqdm 下载路径以类形态使用它
+    （tqdm.contrib.ensure_lock 调 tqdm_class.get_lock()）——传 lambda 会在
+    真实下载时当场 AttributeError（手工 E2E 实测抓到，桩测试从未覆盖）。
+    hf 侧实例化 kwargs（desc/total/unit…）与记账无关，一律忽略。
+    """
+
+    class _BoundTaskTqdm(_TaskProgress):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(task)
+
+        @staticmethod
+        def get_lock() -> threading.Lock:
+            return threading.Lock()
+
+    return _BoundTaskTqdm
+
+
+def _run_model_download(task_id: str, repo_id: str, revision: Optional[str]) -> None:
+    """后台线程体：逐文件 hf_hub_download（原生断点续传 + etag 校验 + 字节级进度/取消）。"""
+    with _MODEL_TASK_LOCK:
+        task = _MODEL_TASKS.get(task_id)
+    if task is None:
+        return
+    try:
+        from huggingface_hub import HfApi, hf_hub_download
+        import huggingface_hub.utils.tqdm  # noqa: F401 — 确保子模块已加载（utils.__init__ 用同名类遮蔽了它）
+        import sys as _sys
+
+        # 注意：`from huggingface_hub.utils import tqdm` 拿到的是同名“类”而非子模块；
+        # _get_progress_bar_context 运行时查的是子模块全局，必须改 sys.modules 里的真身
+        hf_tqdm_module = _sys.modules["huggingface_hub.utils.tqdm"]
+        info = HfApi().model_info(repo_id, revision=revision, files_metadata=True)
+        # 跳过隐藏文件与无体积条目；revision 钉到解析出的 commit，列表与下载之间分支不漂移
+        files = [s for s in (info.siblings or []) if s.size and not s.rfilename.startswith(".")]
+        if not files:
+            raise RuntimeError("仓库没有可下载的权重文件")
+        total = sum(s.size for s in files)
+        with _MODEL_TASK_LOCK:
+            task["totalBytes"] = total
+            task["updatedAt"] = _now_iso()
+
+        bound_cls = _task_tqdm_class(task)
+        snapshot_file: Optional[str] = None
+        last_name = ""
+        with _MODEL_DOWNLOAD_RUN_LOCK:  # tqdm 替换是进程级的：真实下载必须串行
+            original_tqdm = hf_tqdm_module.tqdm
+            hf_tqdm_module.tqdm = bound_cls  # type: ignore[assignment]
+            try:
+                for sibling in files:
+                    last_name = sibling.rfilename
+                    snapshot_file = hf_hub_download(repo_id=repo_id, filename=last_name, revision=info.sha)
+            finally:
+                hf_tqdm_module.tqdm = original_tqdm  # type: ignore[assignment]
+
+        snapshot_path = Path(snapshot_file or "")
+        for _part in last_name.split("/"):  # 从 <sha>/<relpath> 回到 snapshots/<sha> 根
+            snapshot_path = snapshot_path.parent
+        resolved = info.sha
+        size = total
+        with _MODEL_TASK_LOCK:
+            task["state"] = "completed"
+            task["revision"] = resolved
+            task["snapshotPath"] = str(snapshot_path)
+            task["sizeBytes"] = size
+            task["error"] = None
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载完成 {repo_id}@{resolved[:12]} size={size}", flush=True)
+    except _ModelDownloadCancelled:
+        with _MODEL_TASK_LOCK:
+            task["state"] = "cancelled"
+            task["error"] = "下载已取消（已下载分片保留在缓存，可续传）"
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载取消 {repo_id}（已下载 {task.get('downloadedBytes', 0)} 字节）", flush=True)
+    except Exception as e:  # noqa: BLE001 - 状态如实上报，进程不崩溃
+        with _MODEL_TASK_LOCK:
+            task["state"] = "failed"
+            task["error"] = f"{type(e).__name__}: {e}"
+            task["updatedAt"] = _now_iso()
+            print(f"[worker] 模型下载失败 {repo_id}: {task['error']}", flush=True)
+    finally:
+        with _MODEL_TASK_LOCK:
+            active = _MODEL_ACTIVE_BY_KEY.get(task["key"])
+            if active == task_id:
+                del _MODEL_ACTIVE_BY_KEY[task["key"]]
+
+
+def _task_public(task: dict[str, Any]) -> dict[str, Any]:
+    """对外形状（camelCase，与 Node WorkerModelTask 对齐；内部下划线键不下发）。"""
+    return {
+        "taskId": task["taskId"],
+        "key": task["key"],
+        "repoId": task["repoId"],
+        "requestedRevision": task["requestedRevision"],
+        "state": task["state"],
+        "downloadedBytes": task.get("downloadedBytes", 0),
+        "totalBytes": task.get("totalBytes"),
+        "revision": task.get("revision"),
+        "snapshotPath": task.get("snapshotPath"),
+        "sizeBytes": task.get("sizeBytes"),
+        "error": task.get("error"),
+        "createdAt": task["createdAt"],
+        "updatedAt": task["updatedAt"],
+    }
+
+
+class ModelDownloadRequest(BaseModel):
+    repoId: str = Field(min_length=1)
+    revision: Optional[str] = Field(default=None)
+
+
+@app.post("/models/{key}/download")
+def models_download(key: str, req: ModelDownloadRequest) -> JSONResponse:
+    if key not in _MODEL_TASK_KEYS:
+        raise HTTPException(status_code=400, detail={"error": f"未知模型 key: {key}", "code": "unknown_model"})
+    repo_id = req.repoId.strip()
+    revision = (req.revision or None) or None
+
+    with _MODEL_TASK_LOCK:
+        active_id = _MODEL_ACTIVE_BY_KEY.get(key)
+        if active_id and active_id in _MODEL_TASKS:
+            active = _MODEL_TASKS[active_id]
+            if active["repoId"] == repo_id and (active["requestedRevision"] or None) == revision:
+                return JSONResponse({"task": _task_public(active)})  # 幂等复用在途任务
+            raise HTTPException(
+                status_code=409,
+                detail={"error": f"{key} 已有不同目标的下载任务在进行中", "code": "model_task_conflict", "taskId": active_id},
+            )
+
+        task_id = f"mdl-{int(time.time() * 1000):x}-{hashlib.sha256(f'{key}{repo_id}{revision}'.encode()).hexdigest()[:8]}"
+        now = _now_iso()
+        task: dict[str, Any] = {
+            "taskId": task_id,
+            "key": key,
+            "repoId": repo_id,
+            "requestedRevision": revision,
+            "state": "downloading",
+            "downloadedBytes": 0,
+            "totalBytes": None,
+            "revision": None,
+            "snapshotPath": None,
+            "sizeBytes": None,
+            "error": None,
+            "createdAt": now,
+            "updatedAt": now,
+            "_cancel": False,
+        }
+        _MODEL_TASKS[task_id] = task
+        _MODEL_ACTIVE_BY_KEY[key] = task_id
+
+    threading.Thread(target=_run_model_download, args=(task_id, repo_id, revision), daemon=True, name=f"model-dl-{key}").start()
+    return JSONResponse({"task": _task_public(task)})
+
+
+def _find_task(task_id: str) -> Optional[dict[str, Any]]:
+    with _MODEL_TASK_LOCK:
+        return _MODEL_TASKS.get(task_id)
+
+
+@app.get("/models/tasks/{task_id}")
+def models_task(task_id: str) -> JSONResponse:
+    task = _find_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail={"error": f"下载任务不存在: {task_id}", "code": "model_task_not_found"})
+    return JSONResponse({"task": _task_public(task)})
+
+
+@app.post("/models/tasks/{task_id}/cancel")
+def models_task_cancel(task_id: str) -> JSONResponse:
+    with _MODEL_TASK_LOCK:
+        task = _MODEL_TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail={"error": f"下载任务不存在: {task_id}", "code": "model_task_not_found"})
+        if task["state"] == "downloading":
+            task["_cancel"] = True  # 协作取消：下个进度回调抛 _ModelDownloadCancelled
+            task["updatedAt"] = _now_iso()
+    return JSONResponse(status_code=202, content={"task": _task_public(task)})

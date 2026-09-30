@@ -134,6 +134,15 @@ describe('Voice identity lifecycle API', () => {
     await expect(fs.readFile(path.join(profileDirectory, 'manifest.sha256'), 'utf8')).resolves.toContain('manifest.json');
     await expect(fs.readFile(path.join(profileDirectory, 'reference.wav'))).resolves.toEqual(referenceAudio);
     await expect(fs.readFile(path.join(profileDirectory, 'validation-report.json'), 'utf8')).resolves.toContain('"completed"');
+    // #37 许可元数据：AI 原创 = 可再分发、无 SPDX、绝不携带授权摘要
+    const license = JSON.parse(await fs.readFile(path.join(profileDirectory, 'license.json'), 'utf8'));
+    expect(license.schemaVersion).toBe(1);
+    expect(license.identity).toEqual({ id: identityId, name: '示例声音角色' });
+    expect(license.license).toEqual({ kind: 'ai-original', spdxIdentifier: null, carriedFrom: null });
+    expect(license.redistribution).toEqual({ allowed: true });
+    expect(license.authorization).toBeUndefined();
+    expect(license.watermark).toEqual({ applied: true, method: 'periodic-tone-v1' });
+    expect(license.version).toBe('V1.0');
     const publishedIdentity = JSON.parse(await fs.readFile(path.join(directory, 'voice-identities', identityId, 'identity.json'), 'utf8'));
     expect(publishedIdentity.status).toBe('已发布');
     expect(publishedIdentity.version).toBe('V1.0');

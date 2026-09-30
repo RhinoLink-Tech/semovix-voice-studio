@@ -5,11 +5,19 @@ import JSZip from 'jszip';
 import { Router } from 'express';
 import { getConfig } from '../config';
 import { parseWav } from '../audio/wav';
-import { qwenVoiceCatalog, qwenWorkerSynthesize, resolveQwenSpeaker, waitForWorkerEngineReady } from '../engines/qwenWorker';
+import { qwenVoiceCatalog, resolveQwenSpeaker } from '../engines/qwenWorker';
+import { submitJob } from '../jobs/runner';
+import { deleteJob, findByIdempotencyKey } from '../jobs/store';
+import { IdempotencyConflictError } from '../jobs/errors';
+import '../jobs/executors/providerPreview';
 import { getVoiceIdentity, getVoiceIdentitySourceConfig, saveVoiceIdentitySourceConfig, type SourceConfig } from './voiceIdentities';
 import { fail } from './respond';
 import { uploadSingle } from './upload';
 import { invalidateSourceValidation } from './voiceSourceLifecycle';
+import { ARCHIVE_LIMITS, safeArchivePath } from '../lib/safeFs';
+// #26 原子写公共工具；executor 仍从本模块 import 这些名字
+import { writeJsonAtomic as writeJson, writeBinaryAtomic as writeBinary } from '../lib/atomicFiles';
+export { writeJson, writeBinary };
 
 /**
  * Provider 预置音色与已有 Profile 导入共用的来源资产路由。
@@ -22,12 +30,13 @@ export const voiceAdditionalSourcesRouter = Router();
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const PROFILE_VERSION = /^V\d+\.\d+(?:\.\d+)?$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
-const MAX_UNPACKED_BYTES = 120 * 1024 * 1024;
-const MAX_ARCHIVE_FILES = 32;
-const PREVIEW_TEXT = '这是当前预置声音的统一试听文本，用于确认声音身份、清晰度和适用场景。';
+// #25 限额与 ZIP Slip 防御统一收编到 server/lib/safeFs.ts
+const MAX_IMPORT_BYTES = ARCHIVE_LIMITS.maxArchiveBytes;
+const MAX_UNPACKED_BYTES = ARCHIVE_LIMITS.maxUnpackedBytes;
+const MAX_ARCHIVE_FILES = ARCHIVE_LIMITS.maxEntryCount;
+export const PREVIEW_TEXT = '这是当前预置声音的统一试听文本，用于确认声音身份、清晰度和适用场景。';
 
-type ProviderPreset = {
+export type ProviderPreset = {
   provider: 'qwen3-tts-local';
   providerLabel: string;
   speaker: string;
@@ -39,8 +48,9 @@ type ProviderPreset = {
   selectedAt: string;
   preview?: {
     id: string;
+    jobId: string;
     file: string;
-    status: 'queued' | 'warming' | 'running' | 'completed' | 'failed';
+    status: 'queued' | 'warming' | 'running' | 'completed' | 'failed' | 'cancelled';
     sha256?: string;
     duration?: number;
     sampleRate?: number;
@@ -70,7 +80,16 @@ type ImportedProfile = {
   referenceDuration: number;
   referenceSampleRate: number;
   referenceText?: string;
+  /** #36：导出包携带的许可摘要（无 license.json 的旧包为 null） */
+  license?: ImportedLicenseSummary | null;
   importedAt: string;
+};
+/** 许可摘要：只入档元数据，license.json 本体随包留存于导入目录 */
+export type ImportedLicenseSummary = {
+  kind: string;
+  spdxIdentifier: string | null;
+  carriedFrom: string | null;
+  redistributionAllowed: boolean;
 };
 
 type ImportedManifest = {
@@ -87,14 +106,13 @@ type ImportedManifest = {
 
 const root = (identityId: string) => path.join(getConfig().libraryDir, 'voice-identities', identityId);
 const presetRoot = (identityId: string) => path.join(root(identityId), 'provider-preset');
-const presetFile = (identityId: string) => path.join(presetRoot(identityId), 'selection.json');
-const presetPreviewRoot = (identityId: string) => path.join(presetRoot(identityId), 'previews');
+export const presetFile = (identityId: string) => path.join(presetRoot(identityId), 'selection.json');
+export const presetPreviewRoot = (identityId: string) => path.join(presetRoot(identityId), 'previews');
 const importedRoot = (identityId: string) => path.join(root(identityId), 'imported-profile');
 const importedRecordFile = (identityId: string) => path.join(importedRoot(identityId), 'import.json');
 const sourceAuditFile = (identityId: string) => path.join(root(identityId), 'source-audit.jsonl');
-let providerPreviewQueue: Promise<void> = Promise.resolve();
 
-function hash(content: Buffer | string) { return crypto.createHash('sha256').update(content).digest('hex'); }
+export function hash(content: Buffer | string) { return crypto.createHash('sha256').update(content).digest('hex'); }
 function text(value: unknown, maximum: number) { return typeof value === 'string' ? value.trim().slice(0, maximum) : ''; }
 function textList(value: unknown, maximumItems = 12, maximumLength = 80) {
   if (!Array.isArray(value)) return [];
@@ -109,23 +127,11 @@ function safeId(res: Parameters<typeof fail>[0], id: string) {
   fail(res, 400, '声音角色 ID 格式无效。', 'invalid_identity_id');
   return false;
 }
-async function readJson<T>(file: string): Promise<T | null> {
+export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; }
   catch (error: any) { if (error?.code === 'ENOENT') return null; throw error; }
 }
-async function writeJson(file: string, value: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  await fs.rename(temporary, file);
-}
-async function writeBinary(file: string, content: Buffer) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, content);
-  await fs.rename(temporary, file);
-}
-async function appendAudit(identityId: string, action: string, details: Record<string, unknown>) {
+export async function appendAudit(identityId: string, action: string, details: Record<string, unknown>) {
   await fs.mkdir(path.dirname(sourceAuditFile(identityId)), { recursive: true });
   await fs.appendFile(sourceAuditFile(identityId), `${JSON.stringify({ id: crypto.randomUUID(), action, at: new Date().toISOString(), ...details })}\n`, 'utf8');
 }
@@ -138,12 +144,12 @@ async function requireSource(identityId: string, source: 'Provider 预置音色'
 function configWith<T>(existing: SourceConfig | null, field: string, value: T) {
   return { ...(existing?.configuration || {}), [field]: value };
 }
-function presentationLanguage(language: string) {
+export function presentationLanguage(language: string) {
   if (language === '英文') return 'English';
   if (language === '中英双语') return 'Auto';
   return 'Chinese';
 }
-function validPreset(value: unknown): value is ProviderPreset {
+export function validPreset(value: unknown): value is ProviderPreset {
   if (!value || typeof value !== 'object') return false;
   const item = value as ProviderPreset;
   return item.provider === 'qwen3-tts-local' && typeof item.speaker === 'string' && typeof item.language === 'string'
@@ -151,58 +157,10 @@ function validPreset(value: unknown): value is ProviderPreset {
     && Array.isArray(item.allowedUses) && Array.isArray(item.prohibitedUses);
 }
 
-async function savePresetSelection(identityId: string, selection: ProviderPreset) {
+export async function savePresetSelection(identityId: string, selection: ProviderPreset) {
   await writeJson(presetFile(identityId), selection);
   const existing = await getVoiceIdentitySourceConfig(identityId);
   await saveVoiceIdentitySourceConfig(identityId, 'Provider 预置音色', configWith(existing, 'providerPreset', selection));
-}
-
-async function runProviderPreview(identityId: string, previewId: string, previewText: string) {
-  const update = async (patch: Partial<NonNullable<ProviderPreset['preview']>>) => {
-    const current = await readJson<ProviderPreset>(presetFile(identityId));
-    if (!validPreset(current) || current.preview?.id !== previewId) return null;
-    const selection = { ...current, preview: { ...current.preview, ...patch, updatedAt: new Date().toISOString() } };
-    await savePresetSelection(identityId, selection);
-    return selection;
-  };
-  try {
-    await update({ status: 'warming', error: undefined });
-    await waitForWorkerEngineReady('qwen_tts');
-    const selection = await update({ status: 'running', error: undefined });
-    if (!selection?.preview) return;
-    const catalog = await qwenVoiceCatalog({ force: true });
-    const speaker = resolveQwenSpeaker(selection.speaker, catalog);
-    const wav = await qwenWorkerSynthesize({ text: previewText, speaker, language: presentationLanguage(selection.language), instruct: null });
-    const parsed = parseWav(wav);
-    await writeBinary(path.join(presetPreviewRoot(identityId), selection.preview.file), wav);
-    const completed = await update({
-      status: 'completed', sha256: hash(wav), duration: Math.round(parsed.durationSec * 1000) / 1000,
-      sampleRate: parsed.format.sampleRate, error: undefined,
-    });
-    if (completed?.preview) await appendAudit(identityId, 'provider_preset_preview_generated', { provider: completed.provider, speaker, previewId, sha256: completed.preview.sha256 });
-  } catch (error: any) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
-    await update({ status: 'failed', error: message });
-    await appendAudit(identityId, 'provider_preset_preview_failed', { previewId, error: message });
-  }
-}
-
-/**
- * Provider 试听任务的状态和输入文本已经落盘。进程重启后把未完成任务重新入队，
- * 避免页面留下永远处于“生成中”的孤儿状态；已完成、失败的记录保持不可改写。
- */
-export async function resumeProviderPreviewJobs() {
-  let entries: import('fs').Dirent[] = [];
-  try { entries = await fs.readdir(path.join(getConfig().libraryDir, 'voice-identities'), { withFileTypes: true }); }
-  catch (error: any) { if (error?.code === 'ENOENT') return; throw error; }
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !SAFE_ID.test(entry.name)) continue;
-    const selection = await readJson<ProviderPreset>(presetFile(entry.name));
-    if (!validPreset(selection) || !selection.preview || !['queued', 'warming', 'running'].includes(selection.preview.status)) continue;
-    const preview = selection.preview;
-    const textForJob = preview.requestText || PREVIEW_TEXT;
-    providerPreviewQueue = providerPreviewQueue.then(() => runProviderPreview(entry.name, preview.id, textForJob)).catch(error => console.error('Provider preview resume queue:', error));
-  }
 }
 
 voiceAdditionalSourcesRouter.get('/voice-identities/:identityId/provider-presets/catalog', async (req, res) => {
@@ -260,18 +218,43 @@ voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/provider-preset
     if (!('identity' in result)) return fail(res, result.status, result.error, result.code);
     const selection = await readJson<ProviderPreset>(presetFile(req.params.identityId));
     if (!validPreset(selection) || !selection.licenseAccepted || !selection.nonExclusiveAcknowledged) return fail(res, 409, '请先保存已确认许可与使用边界的 Provider 音色选择。', 'provider_selection_required');
+    // 幂等提交（doc #18）：同 key 同指纹 → 回放既有试听任务（取代进行中 409）
+    const previewText = text(req.body?.text, 500) || PREVIEW_TEXT;
+    const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
+    const requestHash = hash(JSON.stringify({ identityId: req.params.identityId, text: previewText, speaker: selection.speaker }));
+    if (idempotencyKey) {
+      const existingJob = findByIdempotencyKey(idempotencyKey);
+      if (existingJob) {
+        if (existingJob.requestHash !== requestHash) {
+          return fail(res, 409, '幂等键已绑定其他试听请求，请刷新后重试。', 'idempotency_key_conflict', { existingJobId: existingJob.id });
+        }
+        const current = await readJson<ProviderPreset>(presetFile(req.params.identityId));
+        if (validPreset(current) && current.preview) {
+          return res.status(202).json({ preview: { ...current.preview, audioUrl: `/api/voice-identities/${req.params.identityId}/provider-presets/preview` } });
+        }
+        return fail(res, 409, '幂等键对应的试听记录已缺失，请更换幂等键后重试。', 'job_payload_missing');
+      }
+    }
     if (selection.preview && ['queued', 'warming', 'running'].includes(selection.preview.status)) {
       return fail(res, 409, '当前 Provider 试听样音正在生成，请等待任务完成。', 'preview_in_progress', { preview: selection.preview });
     }
-    const previewText = text(req.body?.text, 500) || PREVIEW_TEXT;
+    // 上一次试听已终态：让出确定性主键（provider-preview:<previewId> 每次不同，仅防御同 UUID 重放）
+    if (selection.preview?.id) deleteJob(`provider-preview:${selection.preview.id}`);
     const id = `preview-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
-    const preview: NonNullable<ProviderPreset['preview']> = { id, file: `${id}.wav`, status: 'queued', requestText: previewText, createdAt: now, updatedAt: now };
+    const preview: NonNullable<ProviderPreset['preview']> = { id, jobId: `provider-preview:${id}`, file: `${id}.wav`, status: 'queued', requestText: previewText, createdAt: now, updatedAt: now };
     const updated: ProviderPreset = { ...selection, preview };
     await savePresetSelection(req.params.identityId, updated);
+    try {
+      submitJob({ kind: 'provider-preview', externalId: id, payloadPath: presetFile(req.params.identityId), identityId: req.params.identityId, total: 1, idempotencyKey, requestHash });
+    } catch (error) {
+      if (error instanceof IdempotencyConflictError) {
+        return fail(res, 409, error.message, 'idempotency_key_conflict', { existingJobId: error.existingJobId });
+      }
+      throw error;
+    }
     await invalidateSourceValidation(req.params.identityId, 'provider_preview_regenerated');
     await appendAudit(req.params.identityId, 'provider_preset_preview_queued', { provider: updated.provider, speaker: updated.speaker, previewId: id });
-    providerPreviewQueue = providerPreviewQueue.then(() => runProviderPreview(req.params.identityId, id, previewText)).catch(error => console.error('Provider preview queue:', error));
     return res.status(202).json({ preview: { ...preview, audioUrl: `/api/voice-identities/${req.params.identityId}/provider-presets/preview` } });
   } catch (error: any) {
     return fail(res, 502, error?.message || '生成 Provider 音色试听失败。', 'provider_preview_failed');
@@ -295,9 +278,6 @@ voiceAdditionalSourcesRouter.get('/voice-identities/:identityId/provider-presets
   }
 });
 
-function safeArchivePath(value: string) {
-  return value && !value.startsWith('/') && !value.includes('..') && !value.includes('\\') && value.split('/').every(part => /^[A-Za-z0-9._-]+$/.test(part));
-}
 async function loadImportedProfile(buffer: Buffer) {
   if (buffer.length > MAX_IMPORT_BYTES || buffer.subarray(0, 2).toString('ascii') !== 'PK') throw new Error('导入包必须是小于 50 MB 的合法 ZIP 文件。');
   const zip = await JSZip.loadAsync(buffer, { createFolders: false, checkCRC32: true });
@@ -336,7 +316,40 @@ async function loadImportedProfile(buffer: Buffer) {
     const expected = (await manifestHashEntry.async('text')).trim().split(/\s+/)[0];
     if (!SHA256.test(expected) || expected !== hash(`${JSON.stringify(manifest, null, 2)}\n`) && expected !== hash(manifestBuffer)) throw new Error('Manifest SHA-256 校验失败。');
   }
-  return { manifest, manifestBuffer, manifestHash: hash(manifestBuffer), reference, referenceHash: actualReferenceHash, parsed, profileName, version, productionModel, allowedUses, prohibitedUses };
+  // #36 可选元数据（Semovix 导出包携带）：许可摘要 / 来源证据 / 加水印预览。
+  // 全部可选——不带这些条目的旧格式包仍可导入（扩展不破坏）
+  let licenseSummary: ImportedLicenseSummary | null = null;
+  const licenseEntry = zip.file('license.json');
+  if (licenseEntry) {
+    const content = await licenseEntry.async('nodebuffer');
+    if (content.length > 256 * 1024) throw new Error('license.json 超过 256 KB 限制。');
+    let parsedLicense: any;
+    try { parsedLicense = JSON.parse(content.toString('utf8')); }
+    catch { throw new Error('license.json 不是合法 JSON。'); }
+    const kind = text(parsedLicense?.license?.kind, 40);
+    if (!kind) throw new Error('license.json 缺少许可类别。');
+    licenseSummary = {
+      kind,
+      spdxIdentifier: typeof parsedLicense?.license?.spdxIdentifier === 'string' ? parsedLicense.license.spdxIdentifier : null,
+      carriedFrom: typeof parsedLicense?.license?.carriedFrom === 'string' ? parsedLicense.license.carriedFrom : null,
+      redistributionAllowed: parsedLicense?.redistribution?.allowed === true,
+    };
+  }
+  const evidenceEntry = zip.file('source-evidence.json');
+  let evidence: Buffer | null = null;
+  if (evidenceEntry) {
+    evidence = await evidenceEntry.async('nodebuffer');
+    if (evidence.length > 256 * 1024) throw new Error('source-evidence.json 超过 256 KB 限制。');
+    try { JSON.parse(evidence.toString('utf8')); }
+    catch { throw new Error('source-evidence.json 不是合法 JSON。'); }
+  }
+  const previewEntry = zip.file('preview.wav');
+  let preview: Buffer | null = null;
+  if (previewEntry) {
+    preview = await previewEntry.async('nodebuffer');
+    if (preview.length > 20 * 1024 * 1024) throw new Error('preview.wav 超过 20 MB 限制。');
+  }
+  return { manifest, manifestBuffer, manifestHash: hash(manifestBuffer), reference, referenceHash: actualReferenceHash, parsed, profileName, version, productionModel, allowedUses, prohibitedUses, licenseSummary, evidence, preview };
 }
 
 voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profile', uploadSingle('profile'), async (req, res) => {
@@ -356,6 +369,7 @@ voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profil
       manifestFile: 'manifest.json', manifestSha256: loaded.manifestHash,
       referenceFile: 'reference.wav', referenceSha256: loaded.referenceHash,
       referenceDuration: Math.round(loaded.parsed.durationSec * 1000) / 1000, referenceSampleRate: loaded.parsed.format.sampleRate,
+      license: loaded.licenseSummary,
       importedAt: new Date().toISOString(),
     };
     const folder = path.join(importedRoot(req.params.identityId), id);
@@ -367,6 +381,9 @@ voiceAdditionalSourcesRouter.post('/voice-identities/:identityId/imported-profil
         writeBinary(path.join(folder, record.packageFile), req.file.buffer),
         writeBinary(path.join(folder, record.manifestFile), loaded.manifestBuffer),
         writeBinary(path.join(folder, record.referenceFile), loaded.reference),
+        // #36 元数据随包归档（许可/证据/预览本体留存，供追溯与展示）
+        ...(loaded.evidence ? [writeBinary(path.join(folder, 'source-evidence.json'), loaded.evidence)] : []),
+        ...(loaded.preview ? [writeBinary(path.join(folder, 'preview.wav'), loaded.preview)] : []),
         writeJson(path.join(folder, 'import.json'), record),
       ]);
       await writeJson(importedRecordFile(req.params.identityId), record);

@@ -1,0 +1,6 @@
+{
+  "check": "对已冻结的 V1.0 再次发布 → 期待 409 version_exists",
+  "status": 409,
+  "code": "version_exists",
+  "pass": true
+}

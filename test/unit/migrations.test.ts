@@ -74,6 +74,47 @@ describe('migrate()', () => {
     db.close();
   });
 
+  it('creates runtime_jobs with the partial unique idempotency index (P0-B #14/#18)', () => {
+    const db = new Database(path.join(dir, 'library.db'));
+    migrate(db);
+
+    const columns = (db.prepare("PRAGMA table_info('runtime_jobs')").all() as Array<{ name: string }>)
+      .map(column => column.name);
+    expect(columns).toEqual(expect.arrayContaining([
+      'id', 'type', 'status', 'progress_json',
+      'payload_kind', 'payload_external_id', 'payload_path', 'identity_id',
+      'idempotency_key', 'request_hash', 'deadline_at', 'timeout_stage',
+      'attempt', 'started_at', 'finished_at', 'cancel_requested', 'cancel_reason',
+      'created_at', 'updated_at',
+    ]));
+
+    const index = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_runtime_jobs_idempotency_key'"
+    ).get() as { sql: string } | undefined;
+    expect(index?.sql).toMatch(/CREATE UNIQUE INDEX/i);
+    expect(index?.sql).toMatch(/WHERE idempotency_key IS NOT NULL/i); // 部分索引：cancelled 清键后同 key 可重用
+    db.close();
+  });
+
+  it('adds nullable provenance columns to generations (P0-B #28)', () => {
+    const db = new Database(path.join(dir, 'library.db'));
+    migrate(db);
+
+    const columns = (db.prepare("PRAGMA table_info('generations')").all() as Array<{ name: string }>)
+      .map(column => column.name);
+    expect(columns).toEqual(expect.arrayContaining([
+      'voice_identity_id', 'voice_profile_version', 'manifest_hash',
+      'model_repo', 'model_revision', 'seed', 'device',
+      'input_text_sha256', 'output_sha256',
+    ]));
+
+    // 旧库升级路径：0002 时代的既有行补列后全 NULL，不留默认假值
+    db.prepare(`INSERT INTO generations (id, kind, engine, status, created_at) VALUES ('legacy-1', 'tts', 'gemini', 'done', '2026-01-01T00:00:00Z')`).run();
+    const row = db.prepare('SELECT voice_identity_id, manifest_hash, output_sha256, seed FROM generations WHERE id = ?').get('legacy-1') as Record<string, null>;
+    expect(row).toEqual({ voice_identity_id: null, manifest_hash: null, output_sha256: null, seed: null });
+    db.close();
+  });
+
   it('runs each migration at most once even when list grows', () => {
     const db = new Database(path.join(dir, 'library.db'));
     migrate(db);

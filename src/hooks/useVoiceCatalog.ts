@@ -6,12 +6,15 @@
  *   引擎 cold/loading 时自动 POST /api/engines/qwen_tts/warmup 并每 2s 轮询，
  *   ready 瞬间刷新目录；error 如实暴露真实原因，绝无伪造的“已连接”。
  * - webSpeech：浏览器 speechSynthesis 系统音色
+ * - voiceProfile（P0-B #27）：/api/voice-profiles 拉取库中已发布冻结 Profile；
+ *   每项服务端均已校验 Manifest SHA-256，ID 即 profile:<identityId>@<version>
  * 另导出 useWorkerEngine('whisper_asr')：转录弹窗等处的引擎状态/预热复用。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { VoiceProvider } from '../types/audio';
 import { AVAILABLE_VOICES } from '../utils/voiceModelConfig';
 import type { ProviderVoiceEntry } from '../utils/voiceProvider';
+import { useEventStream } from './useEventStream';
 
 export type EngineRuntimeState = 'cold' | 'loading' | 'ready' | 'error' | 'unreachable';
 
@@ -39,6 +42,41 @@ const GEMINI_CATALOG: ProviderVoiceEntry[] = AVAILABLE_VOICES.map(v => ({
 }));
 
 const QWEN_PREVIEW = '你好，我是本地的 Qwen3 语音，正在为你朗读这段试听样音。';
+const PROFILE_PREVIEW = '这是当前已发布 Voice Profile 的统一试听文本，用于确认声音身份、清晰度和适用场景。';
+
+interface ProfileCatalogResponse {
+  profiles?: Array<{
+    identityId: string;
+    identityName: string;
+    sourceType: string;
+    version: string;
+    profileName: string;
+    productionModel: string;
+    manifestHash: string;
+    frozenAt: string;
+    voiceName: string;
+  }>;
+  skippedCorrupt?: number;
+}
+
+async function fetchPublishedProfiles(): Promise<{ state: EngineRuntimeState; error: string | null; voices: ProviderVoiceEntry[] }> {
+  try {
+    const res = await fetch('/api/voice-profiles');
+    if (!res.ok) return { state: 'unreachable', error: `已发布 Profile 目录不可用（HTTP ${res.status}）`, voices: [] };
+    const data = (await res.json()) as ProfileCatalogResponse;
+    const voices = (data.profiles ?? []).map(profile => ({
+      id: profile.voiceName, // profile:<identityId>@<version>，服务端按此精确路由
+      name: profile.profileName || profile.identityName || profile.voiceName,
+      tag: `${profile.identityName} · ${profile.version}`,
+      desc: `${profile.productionModel.includes('Base') ? '参考音频克隆' : '预置音色'} · 冻结于 ${profile.frozenAt.slice(0, 10)} · Manifest 已校验`,
+      gender: '已发布',
+      previewPrompt: PROFILE_PREVIEW,
+    }));
+    return { state: 'ready', error: null, voices };
+  } catch (e: any) {
+    return { state: 'unreachable', error: e?.message || '网络错误', voices: [] };
+  }
+}
 
 interface StatusResponse {
   engines?: Array<{ id: string; reachable: boolean; state: string; error: string | null }>;
@@ -70,12 +108,11 @@ async function fetchQwenStatus(): Promise<{ state: EngineRuntimeState; error: st
   }
 }
 
-/** 通用 Worker 引擎状态（qwen_tts / whisper_asr）：自动预热 + 2s 轮询直至 ready/error */
+/** 通用 Worker 引擎状态（qwen_tts / whisper_asr）：自动预热；engine.updated 事件驱动刷新，SSE 断流降级回 cold/loading 2s 轮询 */
 export function useWorkerEngine(engineId: 'qwen_tts' | 'whisper_asr', autoWarmup = true) {
   const [state, setState] = useState<EngineRuntimeState>('cold');
   const [error, setError] = useState<string | null>(null);
   const [warming, setWarming] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aliveRef = useRef(true);
 
   const poll = useCallback(async () => {
@@ -125,28 +162,24 @@ export function useWorkerEngine(engineId: 'qwen_tts' | 'whisper_asr', autoWarmup
     void poll();
     return () => {
       aliveRef.current = false;
-      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [poll]);
 
-  // cold → 自动预热；cold/loading → 2s 轮询；ready/error → 停止轮询（error 可手动 warmup 重试）
+  // cold → 自动预热（服务端幂等；error 可手动 warmup 重试）
   useEffect(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (state === 'cold' && autoWarmup) {
-      void warmup();
-    }
-    if (state === 'cold' || state === 'loading') {
-      timerRef.current = setInterval(() => {
-        if (aliveRef.current) void poll();
-      }, 2000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [state, autoWarmup, warmup, poll]);
+    if (state === 'cold' && autoWarmup) void warmup();
+  }, [state, autoWarmup, warmup]);
+
+  // 引擎状态事件驱动刷新（P1 #34）：SSE 健康时 cold/loading 不再空转轮询；
+  // 断流降级时恢复原 cold/loading 2s 轮询直至 ready/error
+  useEventStream(['engine.updated'], () => {
+    if (aliveRef.current) void poll();
+  }, {
+    pollFn: () => {
+      if (aliveRef.current && (state === 'cold' || state === 'loading')) void poll();
+    },
+    pollMs: 2000,
+  });
 
   return { state, error, warmup, warming, refresh: poll };
 }
@@ -155,7 +188,29 @@ export function useVoiceCatalog(provider: VoiceProvider): VoiceCatalogApi {
   const worker = useWorkerEngine('qwen_tts', provider === 'qwen3Tts');
   const [qwenVoices, setQwenVoices] = useState<ProviderVoiceEntry[]>([]);
   const [webVoices, setWebVoices] = useState<ProviderVoiceEntry[]>([]);
+  const [profileVoices, setProfileVoices] = useState<ProviderVoiceEntry[]>([]);
+  const [profileState, setProfileState] = useState<EngineRuntimeState>('cold');
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 已发布 Voice Profile（P0-B #27）：目录来自服务端冻结产物（Manifest 已校验）
+  useEffect(() => {
+    if (provider !== 'voiceProfile') return;
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      const { state, error, voices } = await fetchPublishedProfiles();
+      if (cancelled) return;
+      setProfileVoices(voices);
+      setProfileState(state);
+      setProfileError(error);
+      setLoading(false);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
 
   // Qwen：状态就绪时拉目录（ready 瞬间服务端已绕过缓存 TTL）
   useEffect(() => {
@@ -218,6 +273,21 @@ export function useVoiceCatalog(provider: VoiceProvider): VoiceCatalogApi {
         warming: false,
       };
     }
+    if (provider === 'voiceProfile') {
+      return {
+        voices: profileVoices,
+        engineState: profileState,
+        error: profileError,
+        loading,
+        refresh: () => void fetchPublishedProfiles().then(({ state, error, voices }) => {
+          setProfileVoices(voices);
+          setProfileState(state);
+          setProfileError(error);
+        }),
+        warmup: async () => {}, // 无引擎预热概念：合成时按 Profile 路由到对应引擎
+        warming: false,
+      };
+    }
     return {
       voices: qwenVoices,
       engineState: worker.state,
@@ -228,5 +298,5 @@ export function useVoiceCatalog(provider: VoiceProvider): VoiceCatalogApi {
       warming: worker.warming,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, qwenVoices, webVoices, worker.state, worker.error, worker.warming, loading]);
+  }, [provider, qwenVoices, webVoices, profileVoices, profileState, profileError, worker.state, worker.error, worker.warming, loading]);
 }

@@ -1,0 +1,11 @@
+{
+  "validation": {
+    "identityId": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "batchId": "20260930-04",
+    "candidateId": 7,
+    "profileName": "Semovix 官方讲解员 V1",
+    "profileVersion": "V1.0",
+    "humanListeningConfirmed": true,
+    "savedAt": "2026-09-30T11:20:56.637Z"
+  }
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Archive,
+  Boxes,
   FolderGit2,
   Layers,
   Mic,
@@ -11,8 +12,9 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
+import { getDesktopBridge } from '../desktop/desktopBridge';
 
-export type StudioTab = 'library' | 'voice-identities' | 'tts' | 'sfx' | 'beat' | 'multitrack';
+export type StudioTab = 'library' | 'voice-identities' | 'tts' | 'voice-config' | 'sfx' | 'beat' | 'multitrack' | 'models';
 
 interface NavbarProps {
   currentTab: StudioTab;
@@ -34,9 +36,11 @@ const navigation = [
   { id: 'library', label: '素材库', icon: FolderGit2 },
   { id: 'voice-identities', label: '声音角色', icon: Radio },
   { id: 'tts', label: 'AI 语音生成', icon: Radio },
+  { id: 'voice-config', label: '语音模型配置', icon: Sliders },
   { id: 'sfx', label: '智能音效', icon: Sparkles },
   { id: 'beat', label: '音乐与伴奏', icon: Music },
   { id: 'multitrack', label: '多轨混音', icon: Layers },
+  { id: 'models', label: '模型管理', icon: Boxes },
 ] as const;
 
 const SearchField: React.FC<Pick<NavbarProps, 'searchQuery' | 'onSearchChange'> & { placeholder?: string }> = ({
@@ -72,6 +76,25 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCreatingVoiceIdentity = false,
   voiceModuleHint,
 }) => {
+  const isMacDesktop = getDesktopBridge() !== null && /Mac/.test(navigator.platform);
+  const navigationRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    const revealActiveItem = () => {
+      const navigation = navigationRef.current;
+      const activeItem = navigation?.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!navigation || !activeItem) return;
+
+      const navigationBounds = navigation.getBoundingClientRect();
+      const itemBounds = activeItem.getBoundingClientRect();
+      if (itemBounds.left < navigationBounds.left) navigation.scrollLeft += itemBounds.left - navigationBounds.left;
+      else if (itemBounds.right > navigationBounds.right) navigation.scrollLeft += itemBounds.right - navigationBounds.right;
+    };
+    revealActiveItem();
+    window.addEventListener('resize', revealActiveItem);
+    return () => window.removeEventListener('resize', revealActiveItem);
+  }, [currentTab]);
+
   const formatTotalTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -90,18 +113,21 @@ export const Navbar: React.FC<NavbarProps> = ({
   ] as const;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#0d1628]/95 backdrop-blur-xl">
+    <header className="studio-header sticky top-0 z-40 border-b border-slate-800 backdrop-blur-xl">
       <div className="w-full px-4 sm:px-6">
-        <div className="flex min-h-[72px] items-center justify-between gap-3 py-2.5 sm:gap-5 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)_auto]">
-          <div className="flex shrink-0 items-center">
-            <div className="overflow-hidden rounded-lg bg-white ring-1 ring-white/15">
-              <img src="/voice-logo.png" alt="Voice" className="block h-11 w-auto sm:h-14" />
+        <div className={`flex min-h-[68px] items-center justify-between gap-3 py-2.5 sm:gap-5 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)_auto] ${isMacDesktop ? 'pl-20' : ''}`}>
+          <div className="flex min-w-0 flex-1 items-center lg:flex-none">
+            <div className="relative h-10 w-full max-w-[300px] overflow-hidden sm:h-12">
+              <img src="/voice-logo.png" alt="Semovix Voice" className="absolute left-0 top-1/2 block w-full -translate-y-1/2" />
             </div>
           </div>
 
-          <div className="hidden min-w-0 max-w-[390px] flex-1 md:block">
-            <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
-          </div>
+          {currentTab !== 'voice-config' && (
+            <div className="hidden min-w-0 w-full max-w-[390px] lg:block">
+              <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
+            </div>
+          )}
+          {currentTab === 'voice-config' && <div className="hidden lg:block" aria-hidden="true" />}
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-1.5" aria-label="快捷操作">
             {actions.map(({ label, title, icon: Icon, onClick }) => (
@@ -120,12 +146,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        <div className="pb-2 md:hidden">
-          <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
-        </div>
+        {currentTab !== 'voice-config' && (
+          <div className="pb-2 lg:hidden">
+            <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
+          </div>
+        )}
 
         <div className="flex items-end justify-between gap-4">
-          <nav aria-label="工作台导航" className="min-w-0 flex-1 overflow-x-auto">
+          <nav ref={navigationRef} aria-label="工作台导航" className="min-w-0 flex-1 overflow-x-auto">
             <div className="flex min-w-max items-center gap-1">
               {navigation.map(({ id, label, icon: Icon }) => {
                 const active = currentTab === id;

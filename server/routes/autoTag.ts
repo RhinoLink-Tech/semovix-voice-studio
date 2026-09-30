@@ -74,6 +74,6 @@ Generate 4-6 concise, useful Chinese tags for library search and organization (e
     res.json({ success: true, tags: parsed.tags || [], description: parsed.refinedDescription });
   } catch (error: any) {
     console.error('Auto tag error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, code: 'internal_error' });
   }
 });

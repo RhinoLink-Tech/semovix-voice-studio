@@ -5,6 +5,7 @@ import {
   Play, RefreshCw, Save, ShieldCheck, Upload, UserRound, Volume2, X,
 } from 'lucide-react';
 import { VoiceWorkspaceSidebar } from './VoiceWorkspaceSidebar';
+import { isDesktopMode, pickFile } from '../desktop/fileDialogs';
 import './VoiceIdentityHumanCloneView.css';
 
 type CloneIdentity = {
@@ -209,6 +210,16 @@ export function VoiceIdentityHumanCloneView({ id, onCenter, onOverview, onValida
     }
   };
 
+  // 桌面：原生文件对话框（P0-A #12）；Web：隐藏 input
+  const chooseAuthorizationPdf = () => {
+    if (!isDesktopMode()) { authorizationFileInput.current?.click(); return; }
+    void pickFile({ title: '选择授权文件', extensions: ['pdf'] }).then(file => { if (file) void uploadAuthorizationDocument(file); });
+  };
+  const chooseReferenceWav = () => {
+    if (!isDesktopMode()) { fileInput.current?.click(); return; }
+    void pickFile({ title: '选择参考音频', extensions: ['wav'] }).then(file => { if (file) void uploadReference(file); });
+  };
+
   const uploadAuthorizationDocument = async (file?: File) => {
     if (!file) return;
     setUploadingAuthorization(true);
@@ -325,8 +336,8 @@ export function VoiceIdentityHumanCloneView({ id, onCenter, onOverview, onValida
 
         <header className="vch-header">
           <div>
-            <div className="vch-title-row"><h1>声音来源｜授权真人克隆</h1><span className="vch-draft-badge">草稿</span></div>
-            <p>归档声音授权，采集高质量参考样本，并生成可进入后续验证的首次克隆样音。</p>
+            <div className="vch-title-row"><h1>声音来源｜授权真人克隆</h1><span className="vch-draft-badge">草稿</span><span className="vch-draft-badge">实验性</span></div>
+            <p>归档声音授权，采集高质量参考样本，并生成可进入后续验证的首次克隆样音。Alpha 版本已禁用该来源 Voice Profile 的正式发布与生产调用（授权到期/撤销的运行时策略检查尚未实现）。</p>
           </div>
           <div className="vch-header-actions">
             <button type="button" className="vch-secondary" onClick={() => void saveDraft()}><Save size={15} />保存草稿</button>
@@ -362,7 +373,7 @@ export function VoiceIdentityHumanCloneView({ id, onCenter, onOverview, onValida
                 </div>
                 <div className="vch-permissions">
                   <h3>授权范围</h3>
-                  <div className="vch-file-row"><FileText size={17} /><div><strong>{authorization.document?.originalName || '尚未归档授权文件'}</strong><span>{authorization.document ? `已归档 · ${(authorization.document.size / 1024).toFixed(1)} KB · SHA-256 已记录` : '上传 PDF 后才可归档授权'}</span></div>{authorization.document && <a href={`/api/voice-identities/${encodeURIComponent(id)}/clone-authorization/document`} target="_blank" rel="noreferrer">查看</a>}<input ref={authorizationFileInput} type="file" accept="application/pdf,.pdf" hidden onChange={event => void uploadAuthorizationDocument(event.target.files?.[0])} /><button type="button" onClick={() => authorizationFileInput.current?.click()} disabled={uploadingAuthorization}>{uploadingAuthorization ? '归档中' : authorization.document ? '替换' : '上传 PDF'}</button></div>
+                  <div className="vch-file-row"><FileText size={17} /><div><strong>{authorization.document?.originalName || '尚未归档授权文件'}</strong><span>{authorization.document ? `已归档 · ${(authorization.document.size / 1024).toFixed(1)} KB · SHA-256 已记录` : '上传 PDF 后才可归档授权'}</span></div>{authorization.document && <a href={`/api/voice-identities/${encodeURIComponent(id)}/clone-authorization/document`} target="_blank" rel="noreferrer">查看</a>}<input ref={authorizationFileInput} type="file" accept="application/pdf,.pdf" hidden onChange={event => void uploadAuthorizationDocument(event.target.files?.[0])} /><button type="button" onClick={chooseAuthorizationPdf} disabled={uploadingAuthorization}>{uploadingAuthorization ? '归档中' : authorization.document ? '替换' : '上传 PDF'}</button></div>
                   <div className="vch-date-row"><span>授权有效期</span><b><CalendarDays size={12} /><input type="date" value={authorization.validFrom} onChange={event => updateAuthorization('validFrom', event.target.value)} /></b><i>至</i><b><input type="date" value={authorization.validUntil} onChange={event => updateAuthorization('validUntil', event.target.value)} /></b></div>
                   <div className="vch-tag-section"><span>允许用途</span><div>{ALLOWED_USE_OPTIONS.map(item => <button type="button" key={item} className={authorization.allowedUses.includes(item) ? 'is-allowed' : ''} onClick={() => toggleAuthorizationUse('allowedUses', item)}>{item}</button>)}</div></div>
                   <div className="vch-tag-section"><span>禁止用途</span><div>{PROHIBITED_USE_OPTIONS.map(item => <button type="button" key={item} className={authorization.prohibitedUses.includes(item) ? 'is-forbidden' : ''} onClick={() => toggleAuthorizationUse('prohibitedUses', item)}>{item}</button>)}</div></div>
@@ -373,7 +384,7 @@ export function VoiceIdentityHumanCloneView({ id, onCenter, onOverview, onValida
             </section>
 
             <section className="vch-panel vch-audio-panel">
-              <div className="vch-panel-heading"><div><h2>参考音频</h2><p>上传或录制无背景音乐、无明显混响、单一说话人的清晰声音样本。</p></div><div className="vch-panel-actions"><input ref={fileInput} type="file" accept="audio/wav" hidden onChange={event => void uploadReference(event.target.files?.[0])} /><button type="button" onClick={() => fileInput.current?.click()} disabled={uploading || !authorizationStatus.canUse} title={authorizationStatus.canUse ? undefined : authorizationStatus.reason}><Upload size={13} />{uploading ? '正在归档' : '上传音频'}</button><button type="button" onClick={() => notify('现场录制将生成 WAV 后按同一归档流程上传。')} disabled={!authorizationStatus.canUse} title={authorizationStatus.canUse ? undefined : authorizationStatus.reason}><Mic size={13} />现场录制</button></div></div>
+              <div className="vch-panel-heading"><div><h2>参考音频</h2><p>上传或录制无背景音乐、无明显混响、单一说话人的清晰声音样本。</p></div><div className="vch-panel-actions"><input ref={fileInput} type="file" accept="audio/wav" hidden onChange={event => void uploadReference(event.target.files?.[0])} /><button type="button" onClick={chooseReferenceWav} disabled={uploading || !authorizationStatus.canUse} title={authorizationStatus.canUse ? undefined : authorizationStatus.reason}><Upload size={13} />{uploading ? '正在归档' : '上传音频'}</button><button type="button" onClick={() => notify('现场录制将生成 WAV 后按同一归档流程上传。')} disabled={!authorizationStatus.canUse} title={authorizationStatus.canUse ? undefined : authorizationStatus.reason}><Mic size={13} />现场录制</button></div></div>
               <div className="vch-primary-sample">
                 <div className="vch-sample-head"><div><strong>{primaryReference?.fileName || '尚未上传主参考样本'}</strong>{primaryReference && <span className="vch-primary-chip">主参考样本</span>}</div><span>{primaryReference ? `${primaryReference.duration.toFixed(1)} 秒 · WAV · ${primaryReference.sampleRate / 1000} kHz · Mono` : '上传 WAV 后可用于克隆'}</span></div>
                 <div className="vch-waveform-line"><button type="button" aria-label={isPlaying ? '暂停参考音频' : '播放参考音频'} onClick={() => toggleReferencePlayback(primaryReference?.id)} disabled={!primaryReference}>{isPlaying && playingReferenceId === primaryReference?.id ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}</button><Waveform /><span>组织内部录制</span></div>

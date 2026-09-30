@@ -1,0 +1,16 @@
+{
+  "result": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "semovix-voice-studio",
+      "version": "2026.9.25"
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": 1
+}

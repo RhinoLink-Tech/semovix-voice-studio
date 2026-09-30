@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "id": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "name": "Semovix 官方讲解员（Golden Path）"
+  },
+  "profileName": "Semovix 官方讲解员 V1",
+  "version": "V1.0",
+  "sourceType": "AI_DESIGNED",
+  "frozenAt": "2026-09-30T11:20:56.673Z",
+  "generatedAt": "2026-09-30T11:20:56.673Z",
+  "license": {
+    "kind": "ai-original",
+    "spdxIdentifier": null,
+    "carriedFrom": null
+  },
+  "usageBoundaries": {
+    "allowed": [],
+    "prohibited": []
+  },
+  "redistribution": {
+    "allowed": true
+  },
+  "includesOriginalReference": true,
+  "watermark": {
+    "applied": true,
+    "method": "periodic-tone-v1"
+  }
+}

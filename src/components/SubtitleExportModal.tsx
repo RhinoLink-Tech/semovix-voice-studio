@@ -15,11 +15,11 @@ import {
 import { AudioItem } from '../types/audio';
 import { 
   autoSegmentSubtitles, 
-  generateSrtContent, 
-  generateVttContent, 
-  downloadTextFile, 
-  SubtitleCue 
+  generateSrtContent,
+  generateVttContent,
+  SubtitleCue
 } from '../utils/subtitleUtils';
+import { saveBytes } from '../desktop/fileDialogs';
 
 interface SubtitleExportModalProps {
   item: AudioItem;
@@ -51,7 +51,8 @@ export const SubtitleExportModal: React.FC<SubtitleExportModalProps> = ({
 
   const handleDownload = () => {
     const filename = `${item.title.replace(/[/\\?%*:|"<>]/g, '_')}.${format}`;
-    downloadTextFile(formattedContent, filename, 'text/plain;charset=utf-8');
+    // 桌面：原生保存对话框；Web：浏览器下载（P0-A #12）
+    void saveBytes(filename, new Blob([formattedContent], { type: 'text/plain;charset=utf-8' }));
   };
 
   return (

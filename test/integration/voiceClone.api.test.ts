@@ -39,7 +39,7 @@ async function archiveAuthorization(app: ReturnType<TestEnv['createApp']>, ident
 }
 
 describe('authorized human clone API', () => {
-  it('archives a reference WAV and generates a traceable Base clone sample', async () => {
+  it('archives a reference WAV, generates a traceable Base clone sample, and blocks formal publish in Alpha', async () => {
     env = await setupTestEnv();
     const app = env.createApp();
     const identity = (await request(app).post('/api/voice-identities').send({
@@ -77,15 +77,16 @@ describe('authorized human clone API', () => {
       const current = await request(app).get(`/api/voice-identities/${identity.id}/source-validation`).expect(200);
       expect(current.body.validation.status).toBe('completed');
       expect(current.body.validation.snapshot.source).toBe('授权真人克隆');
-    }, { timeout: 2000 });
-    await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
+    }, { timeout: 5000 });
+    // Alpha 发布策略（验收 §2.7 选项 2）：克隆正式发布禁用——决策保存与冻结均被阻断
+    //（#37 consent-based 许可元数据的构造逻辑由 test/unit/profileLicense.test.ts 覆盖）
+    const decisionBlocked = await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
       profileName: '授权讲师声音 V1', profileVersion: 'V1.0', humanListeningConfirmed: true,
       usageBoundaries: { allowed: ['技术解读视频'], prohibited: ['冒充本人实时对话'] },
-    }).expect(200);
-    const frozen = await request(app).post(`/api/voice-identities/${identity.id}/source-voice-profiles`).expect(201);
-    expect(frozen.body.profile.status).toBe('published');
-    const manifest = await request(app).get(`/api/voice-identities/${identity.id}/voice-profiles/V1.0/manifest`).expect(200);
-    expect(manifest.body.manifest.source.source).toBe('授权真人克隆');
+    }).expect(409);
+    expect(decisionBlocked.body.code).toBe('clone_publish_disabled_in_alpha');
+    const freezeBlocked = await request(app).post(`/api/voice-identities/${identity.id}/source-voice-profiles`).expect(409);
+    expect(freezeBlocked.body.code).toBe('clone_publish_disabled_in_alpha');
     const documentPath = path.join(env.libraryDir, 'voice-identities', identity.id, 'clone', 'authorization', authorization.document.fileName);
     await fs.appendFile(documentPath, 'tampered');
     await request(app).get(`/api/voice-identities/${identity.id}/clone-authorization/document`).expect(409);

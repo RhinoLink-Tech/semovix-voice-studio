@@ -1,0 +1,13 @@
+{
+  "requestText": "欢迎体验 Semovix Voice Studio。这条语音由已发布的 Voice Profile 真实生成，用于验证生产链路可用性。",
+  "generationId": "tts-muo0l6rk-msp6zg",
+  "audioUrl": "/api/artifacts/tts-muo0l6rk-msp6zg",
+  "provenance": {
+    "voiceIdentityId": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "voiceProfileVersion": "V1.0",
+    "manifestHash": "90b4ea407ffe12e781131d93205eaea8ef60976528e02709cf3b0fa3b3f766af",
+    "workerEngine": "voice_clone"
+  },
+  "outputSha256": "da6e8d55a4da96ba745575c8fd624388044d5bb768af2fc1f339d96e5f0373b8",
+  "bytes": 437806
+}

@@ -1,0 +1,45 @@
+{
+  "check": "MCP transcribe（本地 Whisper）对三条生产样本回听转录，与请求文案计算文字一致性（与产品内同口径算法）",
+  "results": [
+    {
+      "file": "product-1.wav",
+      "requestText": "欢迎体验 Semovix Voice Studio。这条语音由已发布的 Voice Profile 真实生成，用于验证生产链路可用性。",
+      "transcript": "欢迎体验Semovics Voice Studio这条语音由已发布的Voice Profile真实生成用于验证生产链路可用性",
+      "consistencyPercent": 96.6,
+      "payload": {
+        "transcript": "欢迎体验Semovics Voice Studio这条语音由已发布的Voice Profile真实生成用于验证生产链路可用性",
+        "engine": "whisper-local",
+        "generationId": "asr-muo0rjtz-4bexqx",
+        "durationSeconds": 9.12,
+        "detectedLanguage": "zh"
+      }
+    },
+    {
+      "file": "product-2.wav",
+      "requestText": "Golden Path 验收第二段文案：二零二六年九月三十日，版本零点一点零，共十二个候选，两段文案、两种内容风格。",
+      "transcript": "Golden Pass验收第二段文案2026年9月30日版本0.1.0共12个候选两段文案两种内容风格",
+      "consistencyPercent": 92,
+      "payload": {
+        "transcript": "Golden Pass验收第二段文案2026年9月30日版本0.1.0共12个候选两段文案两种内容风格",
+        "engine": "whisper-local",
+        "generationId": "asr-muo0rli3-x8b2fi",
+        "durationSeconds": 9.92,
+        "detectedLanguage": "zh"
+      }
+    },
+    {
+      "file": "mcp-generate-speech.wav",
+      "requestText": "这段音频经 MCP 工具调用生成，用于验证 Agent 集成链路真实可用。",
+      "transcript": "这段音频经MPP工具调用生成用于验证Agent集成链路真实可用",
+      "consistencyPercent": 96.8,
+      "payload": {
+        "transcript": "这段音频经MPP工具调用生成用于验证Agent集成链路真实可用",
+        "engine": "whisper-local",
+        "generationId": "asr-muo0rlx8-22uezz",
+        "durationSeconds": 5.92,
+        "detectedLanguage": "zh"
+      }
+    }
+  ],
+  "pass": true
+}

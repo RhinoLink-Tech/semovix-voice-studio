@@ -129,8 +129,10 @@ export interface AudioEditSettings {
 /**
  * TTS 音色提供方（硬性约束 #5：Google Voice ID 与 Qwen Speaker ID 是两套
  * 独立命名空间，选择按 provider 隔离，切换引擎互不污染）。
+ * voiceProfile（P0-B #27）：库中已发布冻结的 Voice Profile，ID 形如
+ * profile:<identityId>@<version>，合成前经 Manifest/参考音频双重校验。
  */
-export type VoiceProvider = 'gemini' | 'qwen3Tts' | 'webSpeech';
+export type VoiceProvider = 'gemini' | 'qwen3Tts' | 'webSpeech' | 'voiceProfile';
 
 /** 按 provider 保存的音色选择（null = 尚未选择，由目录归一化回退首项） */
 export interface ProviderVoiceSelection {
@@ -196,7 +198,7 @@ export interface MultiTrack {
 export interface MasteringPreset {
   id: string;
   name: string;
-  targetLufs: number; // e.g. -14 LUFS, -16 LUFS
+  targetLufs: number; // 保留字段：预设的响度意图；当前渲染链未实现 LUFS 测量闭环，不按该值执行响度标准化
   description: string;
   eqBoostLow: number;
   eqBoostHigh: number;

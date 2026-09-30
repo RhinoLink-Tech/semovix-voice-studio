@@ -1,0 +1,30 @@
+[2026-09-30T10:06:40.353Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T10:06:40.356Z] ▶ 0-环境快照
+[2026-09-30T10:06:40.597Z] ✔ 0-环境快照 完成（0.2s）
+[2026-09-30T10:06:40.597Z] ▶ 1-创建声音角色
+[2026-09-30T10:06:40.630Z] ✔ 1-创建声音角色 完成（0s）
+[2026-09-30T10:06:40.630Z] ▶ 2-创建设计批次
+[2026-09-30T10:06:40.648Z] ✔ 2-创建设计批次 完成（0s）
+[2026-09-30T10:06:40.648Z] ▶ 3-候选生成
+[2026-09-30T10:06:40.652Z] 设计批次: queued 0/12
+[2026-09-30T10:06:40.654Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":0,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":0,"error":null}}
+[2026-09-30T10:06:55.660Z] 设计批次: warming 0/12
+[2026-09-30T10:06:55.662Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"loading","available":false,"loadAttempts":1,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":0,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":0,"error":null}}
+[2026-09-30T10:07:10.665Z] 设计批次: running 0/12
+[2026-09-30T10:07:10.668Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"ready","available":true,"loadAttempts":1,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":0,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":0,"error":null}}
+[2026-09-30T10:07:25.670Z] 设计批次: running 1/12
+[2026-09-30T10:07:40.673Z] 设计批次: running 2/12
+[2026-09-30T10:07:55.677Z] 设计批次: running 3/12
+[2026-09-30T10:08:10.684Z] 设计批次: running 4/12
+[2026-09-30T10:08:25.693Z] 设计批次: running 5/12
+[2026-09-30T10:08:40.699Z] 设计批次: running 6/12
+[2026-09-30T10:08:55.722Z] 设计批次: running 7/12
+[2026-09-30T10:09:10.732Z] 设计批次: running 8/12
+[2026-09-30T10:09:25.742Z] 设计批次: running 9/12
+[2026-09-30T10:09:40.748Z] 设计批次: running 10/12
+[2026-09-30T10:09:55.762Z] 设计批次: running 11/12
+[2026-09-30T10:10:10.770Z] 设计批次: completed 12/12 → 终态
+[2026-09-30T10:10:10.780Z] ✔ 3-候选生成 完成（210.1s）
+[2026-09-30T10:10:10.780Z] ▶ 4-匿名评审
+[2026-09-30T10:10:10.801Z] ✘ 4-匿名评审 失败：Error: 保存匿名评审 → HTTP 404: {"error":"声音设计批次不存在或不属于当前声音角色","code":"not_found"}
+[2026-09-30T10:10:10.802Z] ✘ Golden Path 失败：保存匿名评审 → HTTP 404: {"error":"声音设计批次不存在或不属于当前声音角色","code":"not_found"}
