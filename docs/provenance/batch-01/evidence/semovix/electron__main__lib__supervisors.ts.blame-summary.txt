@@ -1,0 +1,17 @@
+# blame 聚合摘要（非完整 --line-porcelain 输出）
+# command: git -C <semovix-repo> blame --porcelain <commit> -- <path>
+total_lines: 505
+8276d67e31ea   456 行 (90%) jinguoxing
+b18f80168b65    28 行 (6%) jinguoxing
+0545af162bb4    21 行 (4%) jinguoxing
+
+连续引入区段（≥10 行，按首次出现顺序，供人工复核）：
+  lines 1-260 (260 行) 8276d67e31ea jinguoxing
+  lines 263-287 (25 行) 8276d67e31ea jinguoxing
+  lines 289-298 (10 行) 8276d67e31ea jinguoxing
+  lines 300-354 (55 行) 8276d67e31ea jinguoxing
+  lines 362-373 (12 行) 8276d67e31ea jinguoxing
+  lines 375-387 (13 行) 8276d67e31ea jinguoxing
+  lines 394-404 (11 行) 0545af162bb4 jinguoxing
+  lines 413-434 (22 行) b18f80168b65 jinguoxing
+  lines 435-505 (71 行) 8276d67e31ea jinguoxing

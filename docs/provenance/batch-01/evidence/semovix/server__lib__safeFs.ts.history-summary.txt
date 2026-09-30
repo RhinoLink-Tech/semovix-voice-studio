@@ -1,0 +1,4 @@
+# 历史摘要（关键节点）
+# command: git -C <semovix-repo> log --follow -M --numstat --name-status -- <path>
+commit_count(rev-list): 1
+fb76cdf33add 2026-09-29T14:56:49+08:00 jinguoxing +/- feat(core): error contract, safe atomic fs, voice-profile synthesis, provenance,

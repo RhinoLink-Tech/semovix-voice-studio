@@ -19,3 +19,6 @@ __pycache__/
 
 # 本地工具产物
 .playwright-cli/
+
+# 来源审查本机路径清单（含绝对路径，禁止提交）
+docs/provenance/**/scan-manifest.local.json

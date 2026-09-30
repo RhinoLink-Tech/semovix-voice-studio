@@ -1,0 +1,6 @@
+# 历史摘要（关键节点）
+# command: git -C <semovix-repo> log --follow -M --numstat --name-status -- <path>
+commit_count(rev-list): 3
+8276d67e31ea 2026-09-28T21:46:34+08:00 jinguoxing +/- feat(desktop): absorb P0-A desktop beta capabilities in Electron shell
+b18f80168b65 2026-09-29T16:39:20+08:00 jinguoxing +/- feat(models): managed HF model downloads with resume, verify, disk checks and jo
+0545af162bb4 2026-09-29T17:15:39+08:00 jinguoxing +/- feat(desktop): managed uv Python runtime with locks, repair and rebuild (P1 #31)

@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: docs/specs/longform/33-cue-sheet-export.md
+first_commit: e0b59f3984b70910a40e8c88eb62c407441172da (2026-06-14T01:43:24+05:30)
+pre_semovix_first_commit: 5cab8e01495e318e0e51820e7170467c9e351e79 (2026-08-07T01:30:58+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: 8233f23b2bff51602df72fb755dadbf7bb82f246 (2026-09-28T22:13:55+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

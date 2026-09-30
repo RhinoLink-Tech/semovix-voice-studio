@@ -1,0 +1,7 @@
+# 自动化相似度检查命中的短摘录（非完整文件副本；单文件摘录上限 20 行）
+# semovix: electron/main/ipc.ts @ c5ebd8d220046afd52df34e3ec4982f3fae887b3
+# voicestudio: electron/src/main/ipc.ts @ 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+# 用途：独特字面量/注释命中与最长公共块的人工复核材料
+
+[literal] createDirectory
+[literal] openDirectory

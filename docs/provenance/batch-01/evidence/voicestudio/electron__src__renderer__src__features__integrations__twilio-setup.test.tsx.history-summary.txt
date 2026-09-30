@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: electron/src/renderer/src/features/integrations/twilio-setup.test.tsx
+first_commit: 09ec78c7115d98ca033ac048bd9af0008e524e5f (2026-09-23T07:17:08+05:30)
+pre_semovix_first_commit: 58a306fddd0139cb3fcfc4948189a3bb5b4a5ae3 (2026-09-23T17:40:46+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: 8233f23b2bff51602df72fb755dadbf7bb82f246 (2026-09-28T22:13:55+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

@@ -1,0 +1,15 @@
+electron/main/index.ts|P0|exists
+electron/main/context.ts|P1|exists
+electron/main/ipc.ts|P0|exists
+electron/main/lib/supervisors.ts|P0|exists
+electron/main/lib/managedRuntime.ts|P0|exists
+electron/main/lib/doctorRunner.ts|P1|exists
+electron/main/lib/ports.ts|P1|exists
+electron/main/lib/orphanReaper.ts|P1|exists
+electron/main/lib/runtimeStatus.ts|P1|exists
+electron/preload/preload.ts|P0|exists
+src/desktop/fileDialogs.ts|P0|exists
+server/lib/safeFs.ts|P0|exists
+src/components/desktop/DesktopGate.tsx|P1|exists
+src/components/desktop/DesktopSetupWizard.tsx|P1|exists
+src/components/desktop/RuntimeStatusCenter.tsx|P1|exists

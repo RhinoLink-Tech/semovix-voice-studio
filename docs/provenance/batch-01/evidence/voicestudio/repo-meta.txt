@@ -1,0 +1,11 @@
+# VoiceStudio 对比仓库元数据（只读采集）
+# command: git -C <voicestudio-repo> remote -v / branch --show-current / rev-parse HEAD / status --porcelain=v1
+remote: origin	https://github.com/debpalash/VoiceStudio.git (fetch); origin	https://github.com/debpalash/VoiceStudio.git (push)
+branch: main
+commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+worktree_clean: true
+shallow_clone: false
+commit_count: 3381
+license_file: LICENSE
+license_sha256: 0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0
+license_first_line: GNU AFFERO GENERAL PUBLIC LICENSE

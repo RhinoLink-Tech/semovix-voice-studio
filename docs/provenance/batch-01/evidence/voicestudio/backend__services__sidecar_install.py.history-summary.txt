@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: backend/services/sidecar_install.py
+first_commit: ff56865cf768dc4a64f7001aacd7e7b9b57460ec (2026-07-12T01:13:35+05:30)
+pre_semovix_first_commit: 87c5097d6b239e5ea4f253b7a2d192a588999a4b (2026-09-20T20:22:18+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: fb76cdf33add210a9161e3e14376adf119c8b037 (2026-09-29T14:56:49+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

@@ -1,0 +1,267 @@
+semovix_path,voicestudio_path,mapping_basis,responsibility_match,language_match,history_checked,candidate_commit,notes
+electron/main/context.ts,electron/src/main/backend.ts,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,运行时编排/后端生命周期管理的部分职责
+electron/main/index.ts,electron/src/main/blank-window-guard.ts,symbol_search,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: data:text/html;charset=utf-8,${encodeURIComponent(html)}"
+electron/main/index.ts,electron/src/main/index.ts,same_name+same_responsibility+symbol_search,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"Electron 主进程入口：窗口创建、单实例/退出清理; 重点目录内同名文件; 符号命中: requestSingleInstanceLock, setWindowOpenHandler, trafficLightPosition"
+electron/main/index.ts,electron/src/preload/index.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,重点目录内同名文件
+electron/main/index.ts,electron/src/renderer/src/i18n/index.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,重点目录内同名文件
+electron/main/index.ts,electron/src/renderer/src/routes/index.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,重点目录内同名文件
+electron/main/index.ts,electron/src/shared/i18n/index.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,重点目录内同名文件
+electron/main/index.ts,electron/src/shared/store/index.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,重点目录内同名文件
+electron/main/ipc.ts,electron/src/main/ipc.ts,same_name,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,IPC 通道注册中心; 重点目录内同名文件
+electron/main/ipc.ts,electron/src/main/save-filters.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,对话框文件过滤器辅助（职责片段）
+electron/main/lib/doctorRunner.ts,electron/src/main/repair-agents.ts,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,诊断/修复执行（职责相邻，映射待人工确认）
+electron/main/lib/managedRuntime.ts,electron/src/main/backend-download.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,后端运行时下载与校验
+electron/main/lib/managedRuntime.ts,electron/src/main/runtime-download.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,运行时下载
+electron/main/lib/managedRuntime.ts,electron/src/main/setup-progress.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,首启安装阶段进度状态
+electron/main/lib/orphanReaper.ts,backend/worker/lifecycle.py,same_responsibility,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,worker 生命周期/孤儿处理（跨语言）
+electron/main/lib/orphanReaper.ts,electron/native-helper-build.mjs,symbol_search,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,符号命中: child_process
+electron/main/lib/orphanReaper.ts,electron/native-linux-libraries.mjs,symbol_search,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: child_process, includes"
+electron/main/lib/orphanReaper.ts,electron/scripts/dev.mjs,symbol_search,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,符号命中: child_process
+electron/main/lib/orphanReaper.ts,electron/scripts/embed-appimage-update.mjs,symbol_search,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: child_process, includes"
+electron/main/lib/orphanReaper.ts,electron/src/main/backend-port.test.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,符号命中: child_process
+electron/main/lib/orphanReaper.ts,electron/src/main/backend-setup.test.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: child_process, includes"
+electron/main/lib/orphanReaper.ts,electron/src/main/backend.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: ErrnoException, child_process, includes"
+electron/main/lib/orphanReaper.ts,electron/src/main/data-relocation.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: ErrnoException, includes"
+electron/main/lib/orphanReaper.ts,electron/src/main/dictation-output.test.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,符号命中: child_process
+electron/main/lib/orphanReaper.ts,electron/src/main/dictation-output.ts,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,符号命中: child_process
+electron/main/lib/orphanReaper.ts,electron/src/shared/utils/backendCrash.ts,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,后端崩溃残留处理（职责相邻）
+electron/main/lib/ports.ts,backend/api/routers/audiobook.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: deadline, validate"
+electron/main/lib/ports.ts,backend/api/routers/generation.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: deadline, validate"
+electron/main/lib/ports.ts,backend/api/routers/profiles.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: deadline, validate"
+electron/main/lib/ports.ts,backend/api/routers/settings.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: deadline, validate"
+electron/main/lib/ports.ts,backend/core/device_caps.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, validate"
+electron/main/lib/ports.ts,backend/engines/audiocpp/__init__.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: deadline, validate"
+electron/main/lib/ports.ts,backend/engines/audiocpp/bootstrap.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, validate"
+electron/main/lib/ports.ts,backend/engines/confucius4/bootstrap.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, validate"
+electron/main/lib/ports.ts,backend/engines/dots_tts/bootstrap.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, validate"
+electron/main/lib/ports.ts,backend/engines/indextts/__init__.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, deadline"
+electron/main/lib/ports.ts,backend/engines/indextts/main.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: preferred, deadline"
+electron/main/lib/ports.ts,electron/src/main/backend-port.ts,same_responsibility+symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"后端端口分配; 符号命中: createServer, preferred"
+electron/main/lib/runtimeStatus.ts,electron/src/main/setup-progress.ts,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,首启/运行时进度状态
+electron/main/lib/runtimeStatus.ts,electron/src/renderer/src/components/app-shell/status-runtime.ts,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,运行时状态聚合（renderer 侧）
+electron/main/lib/supervisors.ts,electron/src/main/backend.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,后端子进程生命周期/健康/重启
+electron/main/lib/supervisors.ts,electron/src/main/runtime-project.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,运行时项目管理
+electron/main/lib/supervisors.ts,scripts/dev-backend.mjs,same_responsibility,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,开发态后进程拉起
+electron/preload/preload.ts,electron/src/main/ipc.ts,documentation_reference,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,通道合同对照
+electron/preload/preload.ts,electron/src/preload/index.ts,same_responsibility+symbol_search,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"contextBridge 安全桥; 符号命中: exposeInMainWorld, IpcRendererEvent, removeListener"
+server/lib/safeFs.ts,backend/api/routers/dub_export.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, includes"
+server/lib/safeFs.ts,backend/api/routers/generation.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, contained, includes"
+server/lib/safeFs.ts,backend/core/path_security.py,same_responsibility,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,路径安全/防逃逸守卫（跨语言）
+server/lib/safeFs.ts,backend/main.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: contained, includes"
+server/lib/safeFs.ts,backend/services/asr_backend.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, includes"
+server/lib/safeFs.ts,backend/services/incremental.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, includes"
+server/lib/safeFs.ts,backend/services/llm_providers.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, includes"
+server/lib/safeFs.ts,backend/services/media_tools.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, contained"
+server/lib/safeFs.ts,backend/services/sidecar_install.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: contained, includes"
+server/lib/safeFs.ts,backend/services/subprocess_backend.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, contained"
+server/lib/safeFs.ts,backend/services/token_resolver.py,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: candidate, includes"
+server/lib/safeFs.ts,electron/src/main/watch-folders.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,目录访问边界（职责相邻）
+src/components/desktop/DesktopGate.tsx,electron/src/renderer/src/components/backend-gate.tsx,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,后端未就绪门控 UI
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/batch.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/capture.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/capture_ws.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/dub_core.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/dub_generate.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/dub_translate.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/gallery.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/generation.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/marketplace.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,backend/api/routers/profiles.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,electron/src/renderer/src/components/setup-gate.tsx,same_responsibility+symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"首次启动引导门控; 符号命中: rounded-lg border px-3.5 py-2.5 text-xs space-y-1 ${
+                  workerStatus.environment.managedRuntime.phase === 'failed'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                    : workerStatus.environment.managedRuntime.phase === 'ready'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+                }, text-xs whitespace-nowrap px-2.5 py-1 rounded-full border transition-colors ${
+                  index === stepIndex
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : index < stepIndex
+                      ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-neutral-500'
+                      : 'bg-transparent border-neutral-800 text-neutral-600'
+                }"
+src/components/desktop/DesktopSetupWizard.tsx,electron/src/shared/api/setup.ts,same_responsibility,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,首启配置 API
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/batch.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/dub_generate.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/dub_translate.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/generation.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/setup/download.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/api/routers/tts_stream.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/services/asr_backend.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,backend/services/dub_pipeline.py,symbol_search,yes,no,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,electron/src/renderer/src/components/app-shell/status-bar.tsx,same_responsibility,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,状态栏展示
+src/components/desktop/RuntimeStatusCenter.tsx,electron/src/renderer/src/components/app-shell/status-runtime.ts,same_responsibility,yes,partial,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,运行时状态来源
+src/components/desktop/RuntimeStatusCenter.tsx,electron/src/renderer/src/components/backend-gate.tsx,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/components/desktop/RuntimeStatusCenter.tsx,electron/src/renderer/src/features/clone/script-panel.tsx,symbol_search,yes,yes,no,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: px-2.5 py-1 rounded-md text-xs transition-colors ${
+                          updateChannel === channel
+                            ? 'bg-sky-500/15 border border-sky-500/40 text-sky-300'
+                            : 'bg-neutral-800 border border-transparent text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200'
+                        }"
+src/desktop/fileDialogs.ts,docs/specs/longform/33-cue-sheet-export.md,symbol_search,yes,no,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL, createElement, appendChild"
+src/desktop/fileDialogs.ts,electron/src/main/ipc.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,原生文件对话框 IPC 处理
+src/desktop/fileDialogs.ts,electron/src/main/save-filters.ts,same_responsibility,yes,yes,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,保存对话框过滤器
+src/desktop/fileDialogs.ts,electron/src/renderer/src/components/waveform-player.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createElement, appendChild"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/clone/persona-export.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL, createElement, appendChild"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/clone/profile-preview.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/clone/reference-panel.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/dub/dub-export-panel.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL, createElement"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/gallery/trim-audio.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/integrations/twilio-setup.test.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/integrations/twilio-setup.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
+src/desktop/fileDialogs.ts,electron/src/renderer/src/features/longform/book-settings.tsx,symbol_search,yes,partial,yes,08a1592e3cb9b4c36beef5fa3185ec2313bb1fea,"符号命中: createObjectURL, revokeObjectURL"
