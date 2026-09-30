@@ -68,6 +68,17 @@ function hash(value: Buffer | string) { return crypto.createHash('sha256').updat
 function safeText(value: unknown, max: number) { return typeof value === 'string' ? value.trim().slice(0, max) : ''; }
 function textList(value: unknown) { return Array.isArray(value) ? [...new Set(value.map(item => safeText(item, 80)).filter(Boolean))].slice(0, 12) : []; }
 export function isSource(value: string): value is SourceName { return value === '授权真人克隆' || value === 'Provider 预置音色' || value === '导入已有 Voice Profile'; }
+
+/**
+ * Alpha 发布策略（发布基线验收 §2.7 选项 2）：授权真人克隆的运行时授权过期/撤销
+ * 检查尚未实现，为避免"缺运行时约束却正式发布"，Alpha 期禁用其正式发布；
+ * 消费侧（voiceProfileTts.resolveVoiceProfileForSynthesis）同步禁用生产调用。
+ * 补齐运行时授权策略后移除此门与消费侧同 code 的拦截。
+ */
+const CLONE_PUBLISH_DISABLED_IN_ALPHA = 'Alpha 版本已禁用授权真人克隆 Profile 的正式发布：授权到期/撤销的运行时策略检查尚未实现，该来源当前为实验性能力。';
+
+/** 经谓词而非内联比较判断：避免类型收窄把冻结路由内的克隆分支判为死代码——解除门后这些分支原样恢复可用 */
+function isCloneSource(source: string | undefined): boolean { return source === '授权真人克隆'; }
 export function now() { return new Date().toISOString(); }
 function sourceFile(id: string, relative: string) { return path.join(root(id), relative); }
 
@@ -254,6 +265,7 @@ voiceSourceLifecycleRouter.put('/voice-identities/:identityId/source-validation'
     const sourceResult = await requireSourceIdentity(req.params.identityId);
     if (!('source' in sourceResult)) return fail(res, sourceResult.status, sourceResult.error, sourceResult.code);
     const source = sourceResult.source as SourceName;
+    if (isCloneSource(source)) return fail(res, 409, CLONE_PUBLISH_DISABLED_IN_ALPHA, 'clone_publish_disabled_in_alpha');
     const validation = await readJson<SourceValidation>(validationFile(req.params.identityId));
     const profileName = safeText(req.body?.profileName, 160); const profileVersion = safeText(req.body?.profileVersion, 32);
     const humanListeningConfirmed = req.body?.humanListeningConfirmed === true;
@@ -273,6 +285,7 @@ voiceSourceLifecycleRouter.post('/voice-identities/:identityId/source-voice-prof
   try {
     const sourceResult = await requireSourceIdentity(identityId);
     if (!('source' in sourceResult)) return fail(res, sourceResult.status, sourceResult.error, sourceResult.code);
+    if (isCloneSource(sourceResult.source)) return fail(res, 409, CLONE_PUBLISH_DISABLED_IN_ALPHA, 'clone_publish_disabled_in_alpha');
     const [validation, decision] = await Promise.all([readJson<SourceValidation>(validationFile(identityId)), readJson<SourceDecision>(decisionFile(identityId))]);
     if (!validation || !decision || validation.status !== 'completed' || validation.checks.some(check => check.state === 'failed') || !validation.snapshot || !validation.audio || !decision.humanListeningConfirmed || decision.source !== sourceResult.source) return fail(res, 409, '请先完成来源验证、人工完整回听确认和发布决策。', 'source_lifecycle_incomplete');
     const directory = profileDirectory(identityId, decision.profileVersion);

@@ -63,7 +63,7 @@ function freezeProfile(libraryDir: string, identityId: string, version: string) 
   const directory = path.join(libraryDir, 'voice-profiles', identityId, version);
   fs.mkdirSync(directory, { recursive: true });
   const manifest = {
-    schemaVersion: 2, identity: { id: identityId, name: `角色${identityId}`, sourceType: '授权真人克隆' }, version,
+    schemaVersion: 2, identity: { id: identityId, name: `角色${identityId}`, sourceType: 'AI_DESIGNED' }, version,
     profileName: `${identityId} 讲解声`, frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
     language: '中文（普通话）', referenceText: '冻结时的参考文本。',
     referenceAudio: { file: 'reference.wav', sha256: sha256(reference) },

@@ -95,6 +95,17 @@ export async function resolveVoiceProfileForSynthesis(voiceName: string): Promis
     );
   }
   const { manifest, directory, manifestHash } = verified;
+  // Alpha 发布策略（发布基线验收 §2.7 选项 2）：克隆来源 Profile 禁止生产调用（发布侧 voiceSourceLifecycle 已同步阻断）。
+  // 双字段兜底覆盖新旧 Manifest：identity.sourceType（冻结时写入）与 source.source（验证快照）。
+  const manifestSourceType = String(manifest.identity?.sourceType ?? '');
+  const snapshotSource = String(manifest.source?.source ?? '');
+  if (manifestSourceType === '授权真人克隆' || snapshotSource === '授权真人克隆') {
+    throw new EngineValidationError(
+      `Voice Profile ${parsed.identityId}@${parsed.version} 为授权真人克隆来源：Alpha 版本已禁用其生产调用（授权到期/撤销的运行时策略检查尚未实现）。`,
+      'clone_profile_disabled_in_alpha',
+      { identityId: parsed.identityId, version: parsed.version }
+    );
+  }
   const productionModel = String(manifest.productionModel || '');
   const language = toWorkerLanguage(manifest.language);
 

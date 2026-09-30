@@ -93,8 +93,8 @@ describe('voice profiles catalog and synthesis', () => {
     const app = env.createApp();
     const reference = tinyWavBuffer();
     const { manifestHash } = freezeProfile(env.libraryDir, 'ident-base', 'V1.0', {
-      schemaVersion: 2, identity: { id: 'ident-base', name: '克隆角色', sourceType: '授权真人克隆' }, version: 'V1.0',
-      profileName: '授权讲师 V1', frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
+      schemaVersion: 2, identity: { id: 'ident-base', name: '原创讲解角色', sourceType: 'AI_DESIGNED' }, version: 'V1.0',
+      profileName: '原创讲解员 V1', frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
       language: '中文（普通话）', referenceText: '冻结时的参考文本。', referenceAudio: { file: 'reference.wav', sha256: sha256(reference) },
     }, reference);
 

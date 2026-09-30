@@ -336,8 +336,8 @@ export function VoiceIdentityHumanCloneView({ id, onCenter, onOverview, onValida
 
         <header className="vch-header">
           <div>
-            <div className="vch-title-row"><h1>声音来源｜授权真人克隆</h1><span className="vch-draft-badge">草稿</span></div>
-            <p>归档声音授权，采集高质量参考样本，并生成可进入后续验证的首次克隆样音。</p>
+            <div className="vch-title-row"><h1>声音来源｜授权真人克隆</h1><span className="vch-draft-badge">草稿</span><span className="vch-draft-badge">实验性</span></div>
+            <p>归档声音授权，采集高质量参考样本，并生成可进入后续验证的首次克隆样音。Alpha 版本已禁用该来源 Voice Profile 的正式发布与生产调用（授权到期/撤销的运行时策略检查尚未实现）。</p>
           </div>
           <div className="vch-header-actions">
             <button type="button" className="vch-secondary" onClick={() => void saveDraft()}><Save size={15} />保存草稿</button>

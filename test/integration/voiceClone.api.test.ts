@@ -39,7 +39,7 @@ async function archiveAuthorization(app: ReturnType<TestEnv['createApp']>, ident
 }
 
 describe('authorized human clone API', () => {
-  it('archives a reference WAV and generates a traceable Base clone sample', async () => {
+  it('archives a reference WAV, generates a traceable Base clone sample, and blocks formal publish in Alpha', async () => {
     env = await setupTestEnv();
     const app = env.createApp();
     const identity = (await request(app).post('/api/voice-identities').send({
@@ -78,28 +78,15 @@ describe('authorized human clone API', () => {
       expect(current.body.validation.status).toBe('completed');
       expect(current.body.validation.snapshot.source).toBe('授权真人克隆');
     }, { timeout: 5000 });
-    await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
+    // Alpha 发布策略（验收 §2.7 选项 2）：克隆正式发布禁用——决策保存与冻结均被阻断
+    //（#37 consent-based 许可元数据的构造逻辑由 test/unit/profileLicense.test.ts 覆盖）
+    const decisionBlocked = await request(app).put(`/api/voice-identities/${identity.id}/source-validation`).send({
       profileName: '授权讲师声音 V1', profileVersion: 'V1.0', humanListeningConfirmed: true,
       usageBoundaries: { allowed: ['技术解读视频'], prohibited: ['冒充本人实时对话'] },
-    }).expect(200);
-    const frozen = await request(app).post(`/api/voice-identities/${identity.id}/source-voice-profiles`).expect(201);
-    expect(frozen.body.profile.status).toBe('published');
-    const manifest = await request(app).get(`/api/voice-identities/${identity.id}/voice-profiles/V1.0/manifest`).expect(200);
-    expect(manifest.body.manifest.source.source).toBe('授权真人克隆');
-    // #37 许可元数据：克隆 = consent-based、授权摘要仅元数据、不可再分发
-    const license = JSON.parse(await fs.readFile(path.join(env.libraryDir, 'voice-profiles', identity.id, 'V1.0', 'license.json'), 'utf8'));
-    expect(license.license).toEqual({ kind: 'consent-based', spdxIdentifier: null, carriedFrom: null });
-    expect(license.redistribution).toEqual({ allowed: false });
-    expect(license.usageBoundaries).toEqual({ allowed: ['技术解读视频'], prohibited: ['冒充本人实时对话'] });
-    expect(license.authorization).toMatchObject({
-      subjectName: '授权讲师 A',
-      relationship: '栏目主持人',
-      validFrom: '2026-09-01',
-      validUntil: '2028-08-31',
-      documentSha256: authorization.document.sha256,
-    });
-    // 授权文件本体（PDF 字节）绝不进 license，也绝不把 AI 原创伪装成授权声音
-    expect(JSON.stringify(license)).not.toContain('%PDF');
+    }).expect(409);
+    expect(decisionBlocked.body.code).toBe('clone_publish_disabled_in_alpha');
+    const freezeBlocked = await request(app).post(`/api/voice-identities/${identity.id}/source-voice-profiles`).expect(409);
+    expect(freezeBlocked.body.code).toBe('clone_publish_disabled_in_alpha');
     const documentPath = path.join(env.libraryDir, 'voice-identities', identity.id, 'clone', 'authorization', authorization.document.fileName);
     await fs.appendFile(documentPath, 'tampered');
     await request(app).get(`/api/voice-identities/${identity.id}/clone-authorization/document`).expect(409);

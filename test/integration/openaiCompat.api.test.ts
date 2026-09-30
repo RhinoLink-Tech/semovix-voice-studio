@@ -71,14 +71,33 @@ async function ledgerRow(app: ReturnType<TestEnv['createApp']>, generationId: st
 }
 
 describe('POST /v1/audio/speech', () => {
+  it('rejects consent-based clone profiles in Alpha (runtime policy check pending)', async () => {
+    env = await setupTestEnv();
+    readyWorkerFetch();
+    const app = env.createApp();
+    const reference = tinyWavBuffer();
+    freezeProfile(env.libraryDir, 'ident-clone', 'V1.0', {
+      schemaVersion: 2, identity: { id: 'ident-clone', name: '克隆角色', sourceType: '授权真人克隆' }, version: 'V1.0',
+      profileName: '授权讲师 V1', frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
+      language: '中文（普通话）', referenceText: '冻结时的参考文本。', referenceAudio: { file: 'reference.wav', sha256: sha256(reference) },
+    }, reference);
+    const response = await request(app)
+      .post('/v1/audio/speech')
+      .set('Authorization', 'Bearer sk-any-local-client')
+      .send({ input: '尝试用克隆来源 Profile 合成。', voice: 'profile:ident-clone@V1.0' })
+      .expect(400);
+    expect(response.body.error).toMatchObject({ code: 'clone_profile_disabled_in_alpha' });
+    expect(response.body.error.message).toMatch(/授权真人克隆/);
+  });
+
   it('returns WAV bytes through a published profile (voice auto-routes, Bearer tolerated) and records source=openai-api', async () => {
     env = await setupTestEnv();
     readyWorkerFetch();
     const app = env.createApp();
     const reference = tinyWavBuffer();
     const { manifestHash } = freezeProfile(env.libraryDir, 'ident-base', 'V1.0', {
-      schemaVersion: 2, identity: { id: 'ident-base', name: '克隆角色', sourceType: '授权真人克隆' }, version: 'V1.0',
-      profileName: '授权讲师 V1', frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
+      schemaVersion: 2, identity: { id: 'ident-base', name: '原创讲解角色', sourceType: 'AI_DESIGNED' }, version: 'V1.0',
+      profileName: '原创讲解员 V1', frozenAt: '2026-09-29T00:00:00.000Z', productionModel: 'Qwen3-TTS-12Hz-1.7B-Base',
       language: '中文（普通话）', referenceText: '冻结时的参考文本。', referenceAudio: { file: 'reference.wav', sha256: sha256(reference) },
     }, reference);
 

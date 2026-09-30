@@ -24,7 +24,7 @@
 | 能力 | 状态 | 说明与验收记录 |
 |---|---|---|
 | AI 原创声音设计 | Implemented, verification pending | 四种来源之一；设计批次、候选生成、Manifest 归档均有 CI（伪模型）；2026-09-29 单机部分手动 E2E；真实音质未系统验收 |
-| 授权真人克隆 | Implemented, verification pending | 授权归档、参考音频、样本质量检查完整实现；2026-09-30 单机手动 E2E 全链路通过；授权到期/撤销的运行时自动阻断未实现（后续 PR） |
+| 授权真人克隆 | Experimental | 授权归档、参考音频、样本质量检查完整实现；2026-09-30 单机手动 E2E 全链路通过。因授权到期/撤销的运行时自动阻断未实现，Alpha 版本已禁用 Profile 正式发布与生产调用（发布门 `clone_publish_disabled_in_alpha`、消费门 `clone_profile_disabled_in_alpha`），补齐运行时策略后解除 |
 | Provider 预置音色 | Implemented, verification pending | 从已连接 Worker 运行时读取官方 speaker ID；试听样音真实生成并归档；未逐 Provider 验收 |
 | 导入 Voice Profile | Implemented, verification pending | 仅接受 ZIP（manifest + 单声道 16-bit PCM WAV）；路径安全、大小限制、SHA-256 校验有集成测试；真实外部 Profile 导入未逐例验收 |
 | 匿名评审 | Implemented, verification pending | 随机匿名编号、七项评分、硬性否决、入围 1–3 名；集成测试覆盖校验规则 |
