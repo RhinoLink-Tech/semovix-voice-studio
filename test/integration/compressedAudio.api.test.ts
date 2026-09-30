@@ -12,6 +12,16 @@ import path from 'path';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupTestEnv, setupTestEnv, tinyWavBuffer, type TestEnv } from './helpers';
+
+// d3a9231 起推理改走 undici 直连通道（inferenceFetch），绕过 vi.stubGlobal('fetch')；
+// 把 undici.fetch 委托回 globalThis.fetch，让本文件 / helpers 的 fetch 桩重新覆盖推理调用
+vi.mock('undici', async importOriginal => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return {
+    ...actual,
+    fetch: ((input: string | URL, init?: RequestInit) => globalThis.fetch(input, init)) as typeof actual.fetch,
+  };
+});
 import { ffmpegAvailable, resetFfmpegAvailableCache } from '../../server/lib/audioTranscode';
 
 let env: TestEnv | null = null;

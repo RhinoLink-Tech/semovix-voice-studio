@@ -6,6 +6,16 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { setupTestEnv, cleanupTestEnv, tinyWavBuffer } from './helpers';
 
+// d3a9231 起推理改走 undici 直连通道（inferenceFetch），绕过 vi.stubGlobal('fetch')；
+// 把 undici.fetch 委托回 globalThis.fetch，让本文件 / helpers 的 fetch 桩重新覆盖推理调用
+vi.mock('undici', async importOriginal => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return {
+    ...actual,
+    fetch: ((input: string | URL, init?: RequestInit) => globalThis.fetch(input, init)) as typeof actual.fetch,
+  };
+});
+
 let app: Express;
 let libraryDir: string;
 
