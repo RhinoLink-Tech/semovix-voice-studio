@@ -35,9 +35,9 @@
 
 - 动机：留证文件中的本机绝对路径会暴露用户名与个人卷宗命名，不适合进入公开仓库；
 - 范围：13 个留证文件（artifacts/golden-path* 的 driver.log / environment.json / generations-final.json / mcp-results 与本目录 4 个工具原文）；
-- 变换规则（仅路径，状态/哈希/时间戳/URL 端口一律未动）：
-  - `/Users/kingnet/workspace/DataAI-workspace/semovix-voice` → `<repo>`
-  - 其余 `/Users/kingnet` → `~`
-  - `/Volumes/King的扩展盘` → `<model-volume>`
-- 复查：替换后 `git grep` 对上述三种原路径零命中；HuggingFace repo id 等公开标识不受影响；
+- 变换规则（仅路径，状态/哈希/时间戳/URL 端口一律未动；原路径字面量不再写入公开文档，此处以描述指代）：
+  - 本机仓库绝对路径（含用户名与工作区目录） → `<repo>`
+  - 其余本机家目录前缀 → `~`
+  - 个人外置卷名（模型权重存放盘） → `<model-volume>`
+- 复查：替换后对三种原路径全库检索零命中（本节以描述指代原串，同样不计入）；HuggingFace repo id 等公开标识不受影响；
 - 诚实口径：这是对已提交留证的事后脱敏，事实在此登记；git 历史中的早期提交仍含原路径（见 release-baseline 遗留说明，历史是否重写由所有者决定）。
