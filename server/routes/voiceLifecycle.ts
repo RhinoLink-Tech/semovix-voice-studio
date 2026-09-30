@@ -199,7 +199,7 @@ voiceLifecycleRouter.post('/voice-design/batches/:batchId/validation-run', async
   const batch = await getBatch(req.params.batchId);
   const identityId = typeof req.body?.identityId === 'string' ? req.body.identityId : '';
   const review = await readJson<ReviewRecord>(reviewPath(req.params.batchId));
-  if (!batch || !review || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId || review.identityId !== identityId) return fail(res, 409, '请先完成匿名评审，再开始稳定性验证', 'lifecycle_incomplete');
+  if (!batch || !review || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId || review.identityId !== identityId) return fail(res, 409, '请先完成匿名评审，再开始内容检查', 'lifecycle_incomplete');
   if (batch.status !== 'completed') return fail(res, 409, '候选尚未全部生成完成', 'batch_incomplete');
   // 幂等提交（doc #18）：同 key 同指纹 → 回放既有验证任务；同 key 异指纹 → 409。
   const idempotencyKey = req.header('idempotency-key')?.trim() || (typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '') || undefined;
@@ -274,7 +274,7 @@ voiceLifecycleRouter.put('/voice-design/batches/:batchId/validation', async (req
   if (!batch || !review || !run || !identityIdIsSafe(identityId) || batch.snapshot.identityId !== identityId) return fail(res, 404, '未找到可验证的声音设计批次', 'not_found');
   const candidate = run.candidates.find(item => item.candidateId === candidateId);
   if (!Number.isInteger(candidateId) || !review.finalists.includes(candidateId) || !profileName || !versionIsSafe(profileVersion) || !humanListeningConfirmed) return fail(res, 400, '验证结果、人工回听确认或拟发布候选无效', 'invalid_validation');
-  if (run.status !== 'completed' || candidate?.status !== 'passed') return fail(res, 409, '当前候选尚未通过完整稳定性验证，不能保存发布决策', 'validation_incomplete');
+  if (run.status !== 'completed' || candidate?.status !== 'passed') return fail(res, 409, '当前候选尚未通过完整的内容检查，不能保存发布决策', 'validation_incomplete');
   const validation: ValidationDecision = { identityId, batchId: req.params.batchId, candidateId, profileName, profileVersion, humanListeningConfirmed, savedAt: new Date().toISOString() };
   await writeJson(validationDecisionPath(req.params.batchId), validation);
   return res.json({ validation });
@@ -289,7 +289,7 @@ voiceLifecycleRouter.post('/voice-identities/:identityId/voice-profiles', async 
   const review = await readJson<ReviewRecord>(reviewPath(batchId));
   const identity = identityIdIsSafe(identityId) ? await getVoiceIdentity(identityId) : null;
   if (!identity) return fail(res, 404, '声音角色不存在，不能冻结 Voice Profile', 'identity_not_found');
-  if (!batch || !validation || !validationRun || !review || batch.snapshot.identityId !== identityId || validation.identityId !== identityId) return fail(res, 409, '请先完成匿名评审、稳定性验证与人工回听确认', 'lifecycle_incomplete');
+  if (!batch || !validation || !validationRun || !review || batch.snapshot.identityId !== identityId || validation.identityId !== identityId) return fail(res, 409, '请先完成匿名评审、内容检查与人工回听确认', 'lifecycle_incomplete');
   const candidateId = Number(req.body?.candidateId);
   const validatedCandidate = validationRun.candidates.find(candidate => candidate.candidateId === candidateId);
   if (!Number.isInteger(candidateId) || candidateId !== validation.candidateId || !review.finalists.includes(candidateId) || validationRun.status !== 'completed' || validatedCandidate?.status !== 'passed' || !validation.humanListeningConfirmed) return fail(res, 400, '拟发布候选未通过验证或未完成人工回听确认', 'invalid_candidate');

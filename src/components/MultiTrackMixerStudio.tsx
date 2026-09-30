@@ -343,7 +343,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
       onSaveToLibrary({
         id: `master-${Date.now()}`,
         title,
-        description: `由 AudioCraft 多轨混音工坊导出。母带标准: ${activePreset.name}。包含轨道: ${tracks.map(t => t.name).join(' / ')}。`,
+        description: `由 AudioCraft 多轨混音工坊导出。母带预设: ${activePreset.name}。包含轨道: ${tracks.map(t => t.name).join(' / ')}。`,
         category: 'music',
         audioUrl: result.audioUrl,
         duration: Math.round(result.duration * 10) / 10,
@@ -352,7 +352,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
         format: 'wav',
         fileSize: Math.round(result.duration * 44100 * 2 * 2),
         createdAt: new Date().toISOString(),
-        tags: ['多轨混音', '广播母带', activePreset.name.split(' ')[0]],
+        tags: ['多轨混音', '母带导出', activePreset.name.split(' ')[0]],
         rating: 5,
         metadata: {
           source: 'edited',
@@ -398,7 +398,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
               </span>
             </div>
             <p className="text-xs text-neutral-400">
-              将旁白人声、环境音效与背景音乐在时间轴上拼装对齐，并一键完成广播级母带压限导出
+              将旁白人声、环境音效与背景音乐在时间轴上拼装对齐，并一键完成母带 EQ、压缩与峰值归一化导出
             </p>
           </div>
         </div>
@@ -457,12 +457,12 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
             {isExporting ? (
               <>
                 <Disc className="w-4 h-4 animate-spin" />
-                <span>母带压限导出中 ({exportProgress}%)...</span>
+                <span>母带处理导出中 ({exportProgress}%)...</span>
               </>
             ) : (
               <>
                 <Download className="w-4 h-4" />
-                <span>一键母带交付与导出</span>
+                <span>一键母带处理与导出</span>
               </>
             )}
           </button>
@@ -527,7 +527,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
           <div className="p-3.5 bg-neutral-950/70 rounded-xl border border-neutral-800 space-y-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              <h3 className="text-xs font-bold text-neutral-200">广播级母带压限标准</h3>
+              <h3 className="text-xs font-bold text-neutral-200">母带处理预设</h3>
             </div>
 
             <div className="space-y-1.5">
@@ -546,7 +546,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-neutral-200">{p.name}</span>
-                    <span className="text-[10px] font-mono text-indigo-400">{p.targetLufs} LUFS</span>
+                    <span className="text-[10px] font-mono text-indigo-400">压缩 {p.compressionRatio}:1</span>
                   </div>
                   <p className="text-[10px] text-neutral-400 mt-1 leading-normal">{p.description}</p>
                 </button>
@@ -751,7 +751,7 @@ export const MultiTrackMixerStudio: React.FC<MultiTrackMixerStudioProps> = ({
             <Disc className="w-4 h-4 text-cyan-400 shrink-0" />
             <div>
               <span className="text-neutral-200 font-semibold">创作流小贴士：</span> 
-              您可以先在「AI 语音」生成旁白台词，再到「智能音效」生成转场 SFX，最后在「多轨混音台」中结合背景音乐组合成完整的影视级或播客成片并一键压限导出。
+              您可以先在「AI 语音」生成旁白台词，再到「智能音效」生成转场 SFX，最后在「多轨混音台」中结合背景音乐组合成完整成片，并一键完成母带 EQ、压缩与峰值归一化导出。
             </div>
           </div>
 

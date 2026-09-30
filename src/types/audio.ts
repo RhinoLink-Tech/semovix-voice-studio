@@ -198,7 +198,7 @@ export interface MultiTrack {
 export interface MasteringPreset {
   id: string;
   name: string;
-  targetLufs: number; // e.g. -14 LUFS, -16 LUFS
+  targetLufs: number; // 保留字段：预设的响度意图；当前渲染链未实现 LUFS 测量闭环，不按该值执行响度标准化
   description: string;
   eqBoostLow: number;
   eqBoostHigh: number;

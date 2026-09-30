@@ -127,7 +127,7 @@ async function generateEvidence(ctx: JobContext, run: ValidationRun, candidate: 
 async function execute(ctx: JobContext, ref: JobPayloadRef): Promise<void> {
   const run = await readJson<ValidationRun>(validationRunPath(ref.externalId));
   const batch = await getBatch(ref.externalId);
-  if (!run || !batch) throw new Error(`稳定性验证任务 ${ref.externalId} 的记录缺失`);
+  if (!run || !batch) throw new Error(`内容检查任务 ${ref.externalId} 的记录缺失`);
   ctx.setTimeoutStage('warmup');
   run.status = 'warming';
   await writeValidationRun(run);
