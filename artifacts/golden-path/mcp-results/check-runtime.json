@@ -9,7 +9,7 @@
       "state": "cold",
       "available": false,
       "error": null,
-      "checkpoint": "/Volumes/King的扩展盘/qwen LLM/Qwen3-TTS/models/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+      "checkpoint": "<model-volume>/qwen LLM/Qwen3-TTS/models/Qwen3-TTS-12Hz-1.7B-CustomVoice"
     },
     {
       "id": "voice_design",

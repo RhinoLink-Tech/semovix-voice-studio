@@ -1,6 +1,6 @@
 $ vitest run
 
- RUN  v5.0.1 /Users/kingnet/workspace/DataAI-workspace/semovix-voice
+ RUN  v5.0.1 <repo>
 
 
  Test Files  59 passed (59)
