@@ -2,6 +2,8 @@
   "name": "semovix-voice-studio",
   "private": true,
   "version": "0.1.0-alpha",
+  "description": "Semovix Voice Studio——本地优先的声音角色与音频生产工作台",
+  "author": "Semovix",
   "type": "module",
   "main": "./electron/build/main.cjs",
   "scripts": {

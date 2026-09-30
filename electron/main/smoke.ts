@@ -106,9 +106,15 @@ export async function runSmokeMode(options: SmokeOptions): Promise<void> {
       if (!context.getSetup().python) {
         record('worker-status', false, '未配置 Python 环境（先完成首次启动向导，或设置 SEMOVIX_SMOKE_SKIP_WORKER=1 显式跳过）');
       } else {
-        await context.pythonWorkerSupervisor.start();
-        workerOk = context.pythonWorkerSupervisor.state === 'ready';
-        record('worker-status', workerOk, workerOk ? `pid=${context.pythonWorkerSupervisor.pid} port=${workerPort} health=ok` : context.pythonWorkerSupervisor.detail ?? '未知失败');
+        // 与冷启动 bootstrap 同路径（c5ebd8d）：managed 配置必须先 ensure 注入 venv 解释器，
+        // 直接 start() 会回退 PATH python3——无 uvicorn 的机器上 Worker 秒退
+        try {
+          await context.startConfiguredWorker();
+          workerOk = context.pythonWorkerSupervisor.state === 'ready';
+          record('worker-status', workerOk, workerOk ? `pid=${context.pythonWorkerSupervisor.pid} port=${workerPort} health=ok` : context.pythonWorkerSupervisor.detail ?? '未知失败');
+        } catch (error) {
+          record('worker-status', false, `启动失败：${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     } else {
       workerOk = true; // 显式跳过时不算失败

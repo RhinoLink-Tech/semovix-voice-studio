@@ -1,0 +1,34 @@
+$ tsx scripts/smoke-desktop.ts
+[smoke-desktop] Semovix Voice Studio 桌面冒烟测试
+[smoke-desktop] 编译 Electron 壳…
+
+  electron/build/main.cjs  1.5mb ⚠️
+
+⚡ Done in 51ms
+
+  electron/build/preload/preload.cjs  8.9kb
+
+⚡ Done in 1ms
+[smoke-desktop] 启动 /Users/kingnet/workspace/DataAI-workspace/semovix-voice/node_modules/.bin/electron --smoke
+  {"step":"electron-started","ok":true,"detail":"Electron 44.4.5"}
+  {"step":"node-started","ok":true,"detail":"pid=68283 port=61871"}
+  {"step":"page-loadable","ok":true,"detail":"HTTP 200，SPA HTML 已返回"}
+  {"step":"api-accessible","ok":true,"detail":"HTTP 200"}
+  {"step":"worker-status","ok":true,"detail":"pid=68444 port=61872 health=ok"}
+  {"step":"data-dir-intact","ok":true,"detail":"config/library 在退出清理后完好"}
+  {"step":"temp-cleaned","ok":true,"detail":"temp 已清空"}
+  {"verdict":{"ok":true,"nodePort":61871,"workerPort":61872,"childPids":[68283,68444],"userDataDir":"/Users/kingnet/Library/Application Support/Semovix Voice Studio/smoke-session","failedChecks":[]}}
+
+[smoke-desktop] Electron 退出码 0；复核清理结果…
+  子进程 PID 68283, 68444 → 孤儿: 无 ✓
+  端口 node:61871=已释放 ✓ worker:61872=已释放 ✓
+  数据目录 /Users/kingnet/Library/Application Support/Semovix Voice Studio/smoke-session → 完好 ✓
+
+SMOKE DESKTOP PASS:
+- electron-started
+- node-started（动态端口 + 健康检查）
+- page-loadable / api-accessible（同源 /api）
+- worker-status（/health 可读）
+- children-reaped（无遗留进程、端口释放）
+- data-dir-intact
+exit=0

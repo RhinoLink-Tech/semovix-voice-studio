@@ -30,6 +30,13 @@ extraResources:
     to: app/package.json
   - from: release/staging/app/node_modules
     to: app/node_modules
+  # LIC-07：许可与第三方通知随包分发（Resources/app/ 真实磁盘，非 asar）
+  - from: release/staging/app/LICENSE
+    to: app/LICENSE
+  - from: release/staging/app/NOTICE
+    to: app/NOTICE
+  - from: release/staging/app/THIRD_PARTY_NOTICES.md
+    to: app/THIRD_PARTY_NOTICES.md
 
 mac:
   category: public.app-category.audio

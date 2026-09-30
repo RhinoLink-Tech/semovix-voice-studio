@@ -1,0 +1,32 @@
+$ tsx scripts/smoke-local.ts
+Semovix Voice Studio 本地冒烟 → http://127.0.0.1:3210
+
+[1/7] Worker 健康检查
+  qwen_tts=cold whisper_asr=cold
+
+[2/7] 预热 Qwen3-TTS（uncle_fu）
+  warmup → loading
+  qwen_tts loading…  qwen_tts loading…  qwen_tts ready
+
+[3/7] 真实合成（qwen3-tts-local / uncle_fu）
+  tts-muo2sc4e-2w8n13: 265004B WAV @24000Hz 5.5s
+
+[4/7] 素材库往返（multipart 落盘 → 重读一致性）
+  smoke-muo2s6x8: 265004B 往返一致 sha256=88576838a783…
+
+[5/7] 预热 Whisper → 转录合成音频
+  whisper_asr loading…  whisper_asr loading…  whisper_asr loading…  whisper_asr loading…  whisper_asr ready
+  转录(5.52s): 赛募为让企业人工智能从能回答走向能执行
+
+[6/7] generations 台账核验
+  tts-muo2sc4e-2w8n13: done / tts-muo2sc4e-2w8n13.wav / 赛慕维，让企业人工智能从能回答走向能…
+
+[7/7] 清理冒烟素材
+  已删除 smoke-muo2s6x8
+
+SMOKE PASS:
+- qwen_tts
+- library_roundtrip
+- whisper_asr
+- generation_ledger
+exit=0

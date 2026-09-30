@@ -1,0 +1,16 @@
+== v0.1.0-alpha 发行物校验和 ==
+日期: 2026-09-30T12:33:15Z ｜ git HEAD: 90b73ed8b3c1c08a9a36200eda0a2407235bf131
+
+-- 关键壳与运行面文件 SHA-256：
+91a72a57555ce35b0085574763eb5e19fac0e8f201a5895e7bc7737d82bd677e  release/mac-arm64/Semovix Voice Studio.app/Contents/Info.plist
+e06891704834df56f24489e1f971428161ae17312143624af13736255cc0ab34  release/mac-arm64/Semovix Voice Studio.app/Contents/MacOS/Semovix Voice Studio
+7af9da1ef274e8b1d49f9bd7f2da2b18e1c9080ebd870c8231e0851cf0ec82e6  release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/dist/server.mjs
+cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/LICENSE
+b77e7fb9912e45deaec6011aec7542a77c981e2eab421199efa85ba9352ff47f  release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/NOTICE
+3bc312882fbb4a66fcbfac7f8bd2946c6c0b612b5fca9f3a8eeba0a5c300f5b9  release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/THIRD_PARTY_NOTICES.md
+
+-- dist/server.mjs（源构建产物）SHA-256：
+7af9da1ef274e8b1d49f9bd7f2da2b18e1c9080ebd870c8231e0851cf0ec82e6  dist/server.mjs
+
+-- 注：--dir 模式不产出 dmg/exe 安装包（结构验证构建），无整包校验和；
+   正式安装包发布时以 release/SHA256SUMS.txt 为准（release.mjs 自动生成）。

@@ -1,0 +1,41 @@
+== 依赖安全扫描（v0.1.0-alpha，2026-09-30T12:33:53Z）==
+
+方法（如实声明）：
+1. 本机未安装 osv-scanner / syft / grype，未运行自动化漏洞库比对；
+2. 本证据为依赖清单盘点（JS：package.json + bun.lock；Python：worker/requirements-lock-macos.txt），
+   结合 SECURITY.md 威胁模型（单机、回环绑定）人工评估攻击面；
+3. 自动化 OSV/SBOM 扫描列为 Alpha 已知限制（SECURITY.md），正式发布前补齐。
+
+-- JS 生产依赖（package.json dependencies，329 个跟踪文件）：
+   @google/genai ^2.4.0
+   @modelcontextprotocol/sdk ^1.31.0
+   @tailwindcss/vite ^4.3.3
+   @vitejs/plugin-react ^6.1.1
+   better-sqlite3 ^13.0.3
+   dotenv ^17.2.3
+   express ^4.21.2
+   jszip ^3.10.2
+   lucide-react ^0.546.0
+   motion ^12.23.24
+   multer ^2.4.0
+   react ^19.0.1
+   react-dom ^19.0.1
+   undici ^8.11.2
+   vite ^8.3.0
+   zod ^4.6.5
+
+-- 桌面运行面精简依赖（scripts/release.mjs SERVER_RUNTIME_DEPS，随包分发）：
+   @google/genai, @modelcontextprotocol/sdk, better-sqlite3, dotenv, express, jszip, multer, zod
+
+-- Python 依赖（worker 锁文件，首跑在用户机安装，不入包）：
+   锁定包总数: 91
+   fastapi==0.141.1
+   gradio==6.17.3
+   torch==2.14.0
+   transformers==4.57.3
+   uvicorn==0.54.0
+
+-- 人工评估要点：
+   - 服务端运行面仅 8 个直接依赖（express/zod/jszip/multer/better-sqlite3 等），均为广泛维护的主流库；
+   - 依赖中含原生模块 better-sqlite3（已随包重编译 arm64）；
+   - 无 git 依赖、无 postinstall 拉取脚本的直接依赖；网络出口仅 HuggingFace（权重下载）与可选 Gemini API。
