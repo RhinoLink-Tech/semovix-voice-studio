@@ -791,9 +791,15 @@ def tts_voice_clone(
         speech, sample_rate = librosa.load(io.BytesIO(audio_bytes), sr=None, mono=True)
         if len(speech) == 0:
             raise ValueError("参考音频没有有效采样")
+        # 按文本长度推算生成上限（12Hz codec ≈ 每汉字 3-4 token）：静音占比高的参考
+        # 音频会把 ICL 生成带进"长时间静音"歧途，默认 max_new_tokens=2048（≈170s 音频）
+        # 在慢设备上要跑 20 分钟以上。给足余量后封顶，保证最坏耗时可控、产物不被截断。
+        clone_text = text.strip()
+        max_new_tokens = min(max(len(clone_text) * 6 + 240, 480), 4096)
         with _inference(_VOICE_CLONE):  # #23 并发 = 1
             wavs, sr = _VOICE_CLONE.model.generate_voice_clone(
-                text=text.strip(), language=language, ref_audio=(speech, sample_rate), ref_text=reference_text.strip()
+                text=clone_text, language=language, ref_audio=(speech, sample_rate),
+                ref_text=reference_text.strip(), max_new_tokens=max_new_tokens,
             )
         if not wavs:
             raise RuntimeError("模型未返回音频")

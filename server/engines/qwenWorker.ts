@@ -6,9 +6,28 @@
  * 音频传输全部走字节流/文件（TTS 响应为 WAV 字节、ASR 请求为 multipart），不走 JSON Base64（硬性约束 #7）。
  * Qwen speaker 必须是模型运行时返回的官方精确 ID（如 uncle_fu），目录以外一律拒绝（硬性约束 #6）。
  */
+import { Agent, fetch as undiciFetch } from 'undici';
 import { getConfig } from '../config';
 import { EngineValidationError } from './errors';
 import { observeWorkerSnapshot } from '../events/engineWatcher';
+
+/* ---------------- 推理长请求的 HTTP 超时 ---------------- */
+
+/**
+ * 推理类请求（TTS / 克隆 / 转录）专用通道：全局 fetch 默认 headersTimeout /
+ * bodyTimeout 各 300s，慢设备（MPS/CPU）上克隆等长推理超 5 分钟时，Node 侧会以
+ * "fetch failed" 断连并丢弃 Worker 仍在计算的产物（combinedSignal 的 600s 整体
+ * 上限反而轮不到生效）。改用 undici 配对 fetch + Agent 把两端放宽到 15 分钟；
+ * 整体上限仍由各调用传入的 signal 控制。Node 内置 fetch 拒绝外部 Agent
+ * （"invalid onRequestStart"），故必须与 undici 自身 fetch 成套使用。
+ */
+const inferenceDispatcher = new Agent({ headersTimeout: 900_000, bodyTimeout: 900_000 });
+
+/** DOM FormData/Response 与 undici 类型互不兼容，但运行时行为一致，转换收口在此 */
+async function inferenceFetch(url: string, init: RequestInit): Promise<Response> {
+  const res = await undiciFetch(url, { ...init, dispatcher: inferenceDispatcher } as Parameters<typeof undiciFetch>[1]);
+  return res as unknown as Response;
+}
 
 /* ---------------- 冷启动状态机（P01） ---------------- */
 
@@ -372,7 +391,7 @@ export async function qwenWorkerSynthesize(req: {
   instruct?: string | null;
   signal?: AbortSignal;
 }): Promise<Buffer> {
-  const res = await fetch(`${workerUrl()}/tts/qwen`, {
+  const res = await inferenceFetch(`${workerUrl()}/tts/qwen`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -396,7 +415,7 @@ export async function qwenWorkerVoiceDesign(req: {
   signal?: AbortSignal;
 }): Promise<Buffer> {
   const { signal: _jobSignal, ...payload } = req;
-  const res = await fetch(`${workerUrl()}/tts/voice-design`, {
+  const res = await inferenceFetch(`${workerUrl()}/tts/voice-design`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -419,7 +438,7 @@ export async function qwenWorkerVoiceClone(req: {
   form.append('text', req.text);
   form.append('reference_text', req.referenceText);
   form.append('language', req.language);
-  const res = await fetch(`${workerUrl()}/tts/voice-clone`, {
+  const res = await inferenceFetch(`${workerUrl()}/tts/voice-clone`, {
     method: 'POST', body: form, signal: combinedSignal(req.signal, 600_000),
   });
   if (!res.ok) throw await workerError(res, `Qwen Base 克隆样音生成失败 (HTTP ${res.status})`);
@@ -436,7 +455,7 @@ export async function whisperWorkerTranscribe(
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav');
   form.append('language', language);
 
-  const res = await fetch(`${workerUrl()}/asr/whisper`, {
+  const res = await inferenceFetch(`${workerUrl()}/asr/whisper`, {
     method: 'POST',
     body: form,
     signal: combinedSignal(signal, 600_000),
