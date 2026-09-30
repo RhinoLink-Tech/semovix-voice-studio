@@ -1,0 +1,8 @@
+{
+  "check": "同幂等键 + 异指纹再提交设计批次 → 期待 409 idempotency_key_conflict；库内 batch.json 保持原样（GP-01）",
+  "replayStatus": 409,
+  "replayBody": "{\"error\":\"幂等键已绑定其他设计请求，请刷新后重试。\",\"code\":\"idempotency_key_conflict\",\"existingJobId\":\"design-batch:20260930-02\"}",
+  "replayCode": "idempotency_key_conflict",
+  "batchUnchanged": true,
+  "pass": true
+}

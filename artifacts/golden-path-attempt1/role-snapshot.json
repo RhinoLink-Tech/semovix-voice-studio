@@ -1,0 +1,20 @@
+{
+  "identity": {
+    "id": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "name": "Semovix 官方讲解员（Golden Path）",
+    "ownerDescription": "Semovix的声音身份",
+    "ownerType": "产品",
+    "ownerName": "Semovix",
+    "ownerGroup": "产品",
+    "description": "Golden Path 真实验收用声音角色：验证 AI 原创设计从批次到发布与消费的完整链路。",
+    "source": "AI 原创设计",
+    "language": "中文",
+    "version": "尚未冻结",
+    "status": "草稿",
+    "license": "不适用",
+    "visibility": "团队内可见",
+    "mine": true,
+    "createdAt": "2026-09-30T10:06:40.619Z",
+    "updatedAt": "2026-09-30T10:06:40.619Z"
+  }
+}

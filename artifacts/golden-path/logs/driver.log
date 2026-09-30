@@ -1,0 +1,97 @@
+[2026-09-30T11:12:40.843Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T11:12:40.844Z] ▶ 0-环境快照
+[2026-09-30T11:12:40.953Z] ✔ 0-环境快照 完成（0.1s）
+[2026-09-30T11:12:40.953Z] ▶ 1-创建声音角色
+[2026-09-30T11:12:40.964Z] 复用既有声音角色 voice-d1d6de59-632c-4674-9694-3ee2a93b68d9（Semovix 官方讲解员（Golden Path））
+[2026-09-30T11:12:40.964Z] ✔ 1-创建声音角色 完成（0s）
+[2026-09-30T11:12:40.964Z] ▶ 2-创建设计批次
+[2026-09-30T11:12:40.975Z] ✔ 2-创建设计批次 完成（0s）
+[2026-09-30T11:12:40.976Z] ▶ 3-候选生成
+[2026-09-30T11:12:40.978Z] 设计批次: queued 0/12
+[2026-09-30T11:12:40.982Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":2,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":1,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":1,"error":null}}
+[2026-09-30T11:12:56.024Z] 设计批次: warming 0/12
+[2026-09-30T11:12:56.164Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"ready","available":true,"loadAttempts":3,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":1,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":1,"error":null}}
+[2026-09-30T11:13:11.032Z] 设计批次: running 1/12
+[2026-09-30T11:13:26.036Z] 设计批次: running 2/12
+[2026-09-30T11:13:41.040Z] 设计批次: running 3/12
+[2026-09-30T11:13:56.045Z] 设计批次: running 4/12
+[2026-09-30T11:14:11.060Z] 设计批次: running 5/12
+[2026-09-30T11:14:26.069Z] 设计批次: running 6/12
+[2026-09-30T11:14:41.075Z] 设计批次: running 7/12
+[2026-09-30T11:14:56.083Z] 设计批次: running 8/12
+[2026-09-30T11:15:11.089Z] 设计批次: running 9/12
+[2026-09-30T11:15:26.094Z] 设计批次: running 10/12
+[2026-09-30T11:15:41.104Z] 设计批次: running 11/12
+[2026-09-30T11:15:56.111Z] 设计批次: completed 12/12 → 终态
+[2026-09-30T11:15:56.123Z] ✔ 3-候选生成 完成（195.1s）
+[2026-09-30T11:15:56.123Z] ▶ 4-匿名评审
+[2026-09-30T11:15:56.148Z] 评审入围：#7、#2；占位否决：#4
+[2026-09-30T11:15:56.148Z] ✔ 4-匿名评审 完成（0s）
+[2026-09-30T11:15:56.148Z] ▶ 5-内容检查
+[2026-09-30T11:15:56.161Z] 内容检查: queued 0/16
+[2026-09-30T11:16:16.207Z] 内容检查: warming 0/16
+[2026-09-30T11:16:16.215Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":3,"error":null},"voice_clone":{"state":"ready","available":true,"loadAttempts":2,"error":null},"whisper_asr":{"state":"loading","available":false,"loadAttempts":2,"error":null}}
+[2026-09-30T11:16:36.220Z] 内容检查: running 0/16
+[2026-09-30T11:16:36.223Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":3,"error":null},"voice_clone":{"state":"ready","available":true,"loadAttempts":2,"error":null},"whisper_asr":{"state":"ready","available":true,"loadAttempts":2,"error":null}}
+[2026-09-30T11:16:56.227Z] 内容检查: running 2/16
+[2026-09-30T11:17:16.233Z] 内容检查: running 3/16
+[2026-09-30T11:17:36.267Z] 内容检查: running 4/16
+[2026-09-30T11:17:56.285Z] 内容检查: running 5/16
+[2026-09-30T11:18:16.292Z] 内容检查: running 7/16
+[2026-09-30T11:18:36.299Z] 内容检查: running 8/16
+[2026-09-30T11:18:56.307Z] 内容检查: running 9/16
+[2026-09-30T11:19:16.317Z] 内容检查: running 10/16
+[2026-09-30T11:19:36.329Z] 内容检查: running 11/16
+[2026-09-30T11:19:56.337Z] 内容检查: running 13/16
+[2026-09-30T11:20:16.381Z] 内容检查: running 13/16
+[2026-09-30T11:20:36.394Z] 内容检查: running 15/16
+[2026-09-30T11:20:56.407Z] 内容检查: completed 16/16 → 终态
+[2026-09-30T11:20:56.449Z] 候选 #7：passed，tasks=5 repeats=3
+[2026-09-30T11:20:56.449Z] 候选 #2：passed，tasks=5 repeats=3
+[2026-09-30T11:20:56.452Z] ✔ 5-内容检查 完成（300.3s）
+[2026-09-30T11:20:56.556Z] ▶ 6-发布决策
+[2026-09-30T11:20:56.656Z] ✔ 6-发布决策 完成（0.1s）
+[2026-09-30T11:20:56.656Z] ▶ 7-冻结发布
+[2026-09-30T11:20:56.710Z] ✔ 7-冻结发布 完成（0.1s）
+[2026-09-30T11:20:56.710Z] ▶ 8-产物校验
+[2026-09-30T11:20:56.955Z] 参考音频 SHA-256 校验通过：fb5cd4e52de7d2f92184912c75c0dd0eff09549c1bb639e8b74a88f1dbb90244
+[2026-09-30T11:20:56.955Z] ✔ 8-产物校验 完成（0.2s）
+[2026-09-30T11:20:56.955Z] ▶ 9-产品消费
+[2026-09-30T11:21:21.207Z] 生产合成 1：tts-muo0l6rk-msp6zg，437806 字节，sha256=da6e8d55a4da96ba…
+[2026-09-30T11:21:41.733Z] 生产合成 2：tts-muo0lph4-sz8h7k，476204 字节，sha256=5086394cc797990b…
+[2026-09-30T11:21:41.733Z] ✔ 9-产品消费 完成（44.8s）
+[2026-09-30T11:21:41.733Z] ▶ 10-MCP消费
+[2026-09-30T11:21:41.763Z] MCP tools：check_runtime, generate_speech, get_generation, list_voice_profiles, transcribe
+[2026-09-30T11:21:55.257Z] ✘ 10-MCP消费 失败：TypeError [ERR_INVALID_URL]: fetch() URL is invalid
+[2026-09-30T11:21:55.257Z] ✘ Golden Path 失败：fetch() URL is invalid
+[2026-09-30T11:25:17.473Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T11:25:17.473Z] ↷ 0-环境快照 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 1-创建声音角色 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 2-创建设计批次 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 3-候选生成 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 4-匿名评审 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 5-内容检查 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 6-发布决策 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 7-冻结发布 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 8-产物校验 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ↷ 9-产品消费 上次已成功，续跑跳过
+[2026-09-30T11:25:17.474Z] ▶ 10-MCP消费
+[2026-09-30T11:25:17.503Z] MCP tools：check_runtime, generate_speech, get_generation, list_voice_profiles, transcribe
+[2026-09-30T11:25:36.207Z] MCP generate_speech：{
+  "generationId": "tts-muo0qrt4-7ss116",
+  "audioUrl": "http://127.0.0.1:3210/api/artifacts/tts-muo0qrt4-7ss116",
+  "filePath": "/Users/kingnet/workspace/Data…
+[2026-09-30T11:25:36.210Z] MCP 会话注销 → HTTP 200
+[2026-09-30T11:25:36.210Z] ✔ 10-MCP消费 完成（18.7s）
+[2026-09-30T11:25:36.210Z] ▶ 11-台账核对
+[2026-09-30T11:25:36.216Z] 台账核对通过：4 条生成记录均含 manifest_hash 与输入输出 SHA-256
+[2026-09-30T11:25:36.216Z] ✔ 11-台账核对 完成（0s）
+[2026-09-30T11:25:36.217Z] Golden Path 全链路完成 ✔
+[2026-09-30T11:25:53.806Z] 补充验证启动（GP-01 / GP-08 / GP-14）
+[2026-09-30T11:25:53.820Z] GP-01 同键异指纹 → HTTP 409，批次未变=true
+[2026-09-30T11:25:53.823Z] GP-08 重复发布 V1.0 → HTTP 409
+[2026-09-30T11:25:55.986Z] GP-14 product-1.wav：一致性 96.6%
+[2026-09-30T11:25:56.537Z] GP-14 product-2.wav：一致性 92%
+[2026-09-30T11:25:57.049Z] GP-14 mcp-generate-speech.wav：一致性 96.8%
+[2026-09-30T11:25:57.050Z] MCP 会话已注销
+[2026-09-30T11:25:57.051Z] 补充验证完成 ✔

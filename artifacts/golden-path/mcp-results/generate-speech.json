@@ -1,0 +1,15 @@
+{
+  "generationId": "tts-muo0qrt4-7ss116",
+  "audioUrl": "http://127.0.0.1:3210/api/artifacts/tts-muo0qrt4-7ss116",
+  "filePath": "/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library/artifacts/tts-muo0qrt4-7ss116.wav",
+  "format": "wav",
+  "durationSeconds": 5.9,
+  "sampleRate": 24000,
+  "engine": "voice-profile",
+  "provenance": {
+    "voiceIdentityId": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "voiceProfileVersion": "V1.0",
+    "manifestHash": "90b4ea407ffe12e781131d93205eaea8ef60976528e02709cf3b0fa3b3f766af",
+    "workerEngine": "voice_clone"
+  }
+}

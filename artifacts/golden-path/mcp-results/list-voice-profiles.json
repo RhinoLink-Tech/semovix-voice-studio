@@ -1,0 +1,30 @@
+{
+  "profiles": [
+    {
+      "voiceName": "profile:voice-d1d6de59-632c-4674-9694-3ee2a93b68d9@V1.0",
+      "identityId": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+      "identityName": "Semovix 官方讲解员（Golden Path）",
+      "profileName": "Semovix 官方讲解员 V1",
+      "version": "V1.0",
+      "language": "中文（普通话）",
+      "productionModel": "Qwen3-TTS-12Hz-1.7B-Base",
+      "frozenAt": "2026-09-30T11:20:56.673Z",
+      "referenceText": "本参考文本用于统一 Golden Path 验收口径：声音应当清晰、自然、稳定，经得起长期回听。",
+      "manifestUrl": "http://127.0.0.1:3210/api/voice-identities/voice-d1d6de59-632c-4674-9694-3ee2a93b68d9/voice-profiles/V1.0/manifest",
+      "referenceAudioUrl": "http://127.0.0.1:3210/api/voice-identities/voice-d1d6de59-632c-4674-9694-3ee2a93b68d9/voice-profiles/V1.0/reference-audio"
+    },
+    {
+      "voiceName": "profile:voice-9614e41b-9b27-4c44-aa60-9c8bfbf39c1d@V1.0.0",
+      "identityId": "voice-9614e41b-9b27-4c44-aa60-9c8bfbf39c1d",
+      "identityName": "Provider 产品讲解员",
+      "profileName": "Semovix 产品讲解员 v1",
+      "version": "V1.0.0",
+      "language": "中文",
+      "productionModel": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "frozenAt": "2026-09-29T14:26:01.995Z",
+      "referenceText": "欢迎体验 Semovix 声音工作室，这是一段用于验证与发布流程的试听样音。",
+      "manifestUrl": "http://127.0.0.1:3210/api/voice-identities/voice-9614e41b-9b27-4c44-aa60-9c8bfbf39c1d/voice-profiles/V1.0.0/manifest",
+      "referenceAudioUrl": "http://127.0.0.1:3210/api/voice-identities/voice-9614e41b-9b27-4c44-aa60-9c8bfbf39c1d/voice-profiles/V1.0.0/reference-audio"
+    }
+  ]
+}

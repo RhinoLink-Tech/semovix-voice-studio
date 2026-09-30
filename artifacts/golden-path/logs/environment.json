@@ -1,0 +1,178 @@
+{
+  "capturedAt": "2026-09-30T11:12:40.950Z",
+  "gitHead": "cd2fc5a2f8d5a9f33fb6b4a1c138462ef799e703",
+  "nodeVersion": "v24.3.0",
+  "api": "http://127.0.0.1:3210",
+  "worker": "http://127.0.0.1:8800",
+  "libraryDir": "/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library",
+  "apiServerProcessStartedAt": "Wed Sep 30 15:13:15 2026",
+  "workerHealth": {
+    "ok": true,
+    "protocolVersion": 3,
+    "engines": {
+      "qwen_tts": {
+        "state": "cold",
+        "available": false,
+        "error": null,
+        "loadStartedAt": null,
+        "loadedAt": null,
+        "loadAttempts": 0,
+        "lastUsedAt": null,
+        "inFlight": 0,
+        "evictPending": false,
+        "capabilities": {
+          "presetVoice": true,
+          "design": false,
+          "clone": false,
+          "transcription": false,
+          "languages": [],
+          "sampleRateHz": 24000,
+          "supportsSeed": false,
+          "supportsReferenceAudio": false,
+          "supportsStreaming": false
+        },
+        "modelInfo": {
+          "provider": "Qwen",
+          "repoId": "/Volumes/King的扩展盘/qwen LLM/Qwen3-TTS/models/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "revision": null,
+          "localPath": "/Volumes/King的扩展盘/qwen LLM/Qwen3-TTS/models/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "localPathFingerprint": null,
+          "runtimeVersion": "0.1.1",
+          "torchVersion": "2.14.0",
+          "deviceType": null,
+          "dtype": null
+        },
+        "checkpoint": "/Volumes/King的扩展盘/qwen LLM/Qwen3-TTS/models/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+      },
+      "voice_design": {
+        "state": "cold",
+        "available": false,
+        "error": null,
+        "loadStartedAt": "2026-09-30T10:32:51.690532+00:00",
+        "loadedAt": null,
+        "loadAttempts": 2,
+        "lastUsedAt": null,
+        "inFlight": 0,
+        "evictPending": false,
+        "capabilities": {
+          "presetVoice": false,
+          "design": true,
+          "clone": false,
+          "transcription": false,
+          "languages": [
+            "Chinese",
+            "English",
+            "Auto"
+          ],
+          "sampleRateHz": 24000,
+          "supportsSeed": true,
+          "supportsReferenceAudio": false,
+          "supportsStreaming": false
+        },
+        "modelInfo": {
+          "provider": "Qwen",
+          "repoId": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "revision": null,
+          "localPath": null,
+          "localPathFingerprint": null,
+          "runtimeVersion": "0.1.1",
+          "torchVersion": "2.14.0",
+          "deviceType": null,
+          "dtype": null
+        },
+        "checkpoint": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+      },
+      "voice_clone": {
+        "state": "cold",
+        "available": false,
+        "error": null,
+        "loadStartedAt": "2026-09-30T10:24:41.166672+00:00",
+        "loadedAt": null,
+        "loadAttempts": 1,
+        "lastUsedAt": null,
+        "inFlight": 0,
+        "evictPending": false,
+        "capabilities": {
+          "presetVoice": false,
+          "design": false,
+          "clone": true,
+          "transcription": false,
+          "languages": [
+            "Chinese",
+            "English",
+            "Auto"
+          ],
+          "sampleRateHz": 24000,
+          "supportsSeed": false,
+          "supportsReferenceAudio": true,
+          "supportsStreaming": false
+        },
+        "modelInfo": {
+          "provider": "Qwen",
+          "repoId": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+          "revision": null,
+          "localPath": null,
+          "localPathFingerprint": null,
+          "runtimeVersion": "0.1.1",
+          "torchVersion": "2.14.0",
+          "deviceType": null,
+          "dtype": null
+        },
+        "checkpoint": "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+      },
+      "whisper_asr": {
+        "state": "cold",
+        "available": false,
+        "error": null,
+        "loadStartedAt": "2026-09-30T10:24:56.967251+00:00",
+        "loadedAt": null,
+        "loadAttempts": 1,
+        "lastUsedAt": null,
+        "inFlight": 0,
+        "evictPending": false,
+        "capabilities": {
+          "presetVoice": false,
+          "design": false,
+          "clone": false,
+          "transcription": true,
+          "languages": [
+            "auto",
+            "zh",
+            "en"
+          ],
+          "sampleRateHz": null,
+          "supportsSeed": false,
+          "supportsReferenceAudio": false,
+          "supportsStreaming": false
+        },
+        "modelInfo": {
+          "provider": "OpenAI",
+          "repoId": "openai/whisper-large-v3-turbo",
+          "revision": null,
+          "localPath": null,
+          "localPathFingerprint": null,
+          "runtimeVersion": "4.57.3",
+          "torchVersion": "2.14.0",
+          "deviceType": null,
+          "dtype": null
+        },
+        "checkpoint": "openai/whisper-large-v3-turbo",
+        "model": "openai/whisper-large-v3-turbo"
+      }
+    },
+    "process": {
+      "residentMb": 32.109375,
+      "peakMb": 1180.171875,
+      "idleUnloadSeconds": 1800,
+      "residentBigEngines": []
+    }
+  },
+  "voiceDesignStatus": {
+    "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "reachable": true,
+    "supported": true,
+    "state": "cold",
+    "error": null
+  },
+  "existingIdentityCount": 5
+}

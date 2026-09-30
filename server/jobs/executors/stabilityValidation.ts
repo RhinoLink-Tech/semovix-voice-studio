@@ -24,33 +24,12 @@ import {
 import { batchRoot } from '../../routes/voiceDesign';
 import { captureModelIdentity, qwenWorkerVoiceClone, waitForWorkerEngineReady, whisperWorkerTranscribe } from '../../engines/qwenWorker';
 import { extractPcm16, wavDuration } from '../../audio/wav';
+// 一致性口径收口至共享实现（中文数字↔阿拉伯数字等价归一，PR-3 处置选项 A）
+import { textConsistency } from '../../lib/textConsistency';
 
 const ACTIVE_DOMAIN_STATUSES = new Set(['queued', 'warming', 'running']);
 
-function normalizeText(value: string) {
-  return value.toLocaleLowerCase('zh-CN').replace(/[\s\p{P}\p{S}]/gu, '');
-}
 
-function levenshtein(left: string, right: string) {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row++) {
-    let diagonal = previous[0];
-    previous[0] = row;
-    for (let column = 1; column <= right.length; column++) {
-      const old = previous[column];
-      previous[column] = Math.min(previous[column] + 1, previous[column - 1] + 1, diagonal + (left[row - 1] === right[column - 1] ? 0 : 1));
-      diagonal = old;
-    }
-  }
-  return previous[right.length];
-}
-
-function textConsistency(expected: string, transcript: string) {
-  const normalizedExpected = normalizeText(expected);
-  const normalizedTranscript = normalizeText(transcript);
-  if (!normalizedExpected || !normalizedTranscript) return null;
-  return Math.max(0, Math.round((1 - levenshtein(normalizedExpected, normalizedTranscript) / Math.max(normalizedExpected.length, normalizedTranscript.length)) * 1000) / 10);
-}
 
 function validationStatus(consistency: number | null, duration: number): AudioEvidence['status'] {
   if (!duration || consistency === null) return 'failed';

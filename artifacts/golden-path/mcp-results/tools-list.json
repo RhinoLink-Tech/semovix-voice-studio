@@ -1,0 +1,128 @@
+[
+  {
+    "name": "list_voice_profiles",
+    "title": "已发布 Voice Profile 目录",
+    "description": "列出库中全部已发布（冻结且 manifest SHA-256 校验通过）的 Voice Profile。返回的 voiceName 是 generate_speech 的 voice 参数精确值（profile:<identityId>@<version>）。候选/草稿不在其列；校验失败的损坏版本不进入列表但会如实计数。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "generate_speech",
+    "title": "语音合成（已发布 Voice Profile）",
+    "description": "用已发布 Voice Profile 合成语音，产物为 24kHz 16-bit PCM WAV（format=mp3/opus 时 audioUrl 指向按需转码的压缩衍生，需本机装有 ffmpeg）。voice 省略时按 agent 绑定 → 全局默认 → 唯一已发布 Profile 解析（#47）。结果只含音频 URL 与本地文件路径，不含音频字节；每次调用写入 generations 使用记录。",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "要合成的文本"
+        },
+        "voice": {
+          "description": "已发布 Voice Profile 的 voiceName（profile:<identityId>@<version>，见 list_voice_profiles）；省略则按绑定解析默认声音",
+          "type": "string"
+        },
+        "agent": {
+          "description": "调用方 Agent 标识（用于默认声音绑定，如 xino、video-agent）",
+          "type": "string"
+        },
+        "speed": {
+          "description": "语速（默认 1.0）",
+          "type": "number"
+        },
+        "emotion": {
+          "description": "情绪/语气提示",
+          "type": "string"
+        },
+        "format": {
+          "description": "衍生音频格式（默认 wav；mp3/opus 需本机装有 ffmpeg，audioUrl 以 ?format= 指向压缩版）",
+          "type": "string",
+          "enum": [
+            "wav",
+            "mp3",
+            "opus"
+          ]
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "transcribe",
+    "title": "音频转录",
+    "description": "转录一段音频为文本。audioFilePath（本机绝对路径）与 audioBase64 二选一；model 省略时自动路由（优先本地 Whisper，其次 Gemini）。每次调用写入 generations 使用记录。",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "audioFilePath": {
+          "description": "本机音频文件绝对路径（扩展名 wav/mp3/m4a/ogg/oga/opus/webm/flac）",
+          "type": "string"
+        },
+        "audioBase64": {
+          "description": "音频内容 base64（与 audioFilePath 二选一）",
+          "type": "string"
+        },
+        "model": {
+          "description": "转录模型 ID（whisper-local / gemini-2.5-flash 等；OpenAI 的 whisper-1 视为 whisper-local）",
+          "type": "string"
+        },
+        "language": {
+          "description": "提示语言（默认 auto）",
+          "type": "string",
+          "enum": [
+            "auto",
+            "zh",
+            "en"
+          ]
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "check_runtime",
+    "title": "运行时状态",
+    "description": "查询本地语音运行时：Worker 进程可达性/协议版本、四个引擎的加载状态（cold/loading/ready/error）、素材库所在卷的可用磁盘空间。合成/转录前可用它判断引擎是否就绪。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "get_generation",
+    "title": "查询生成记录",
+    "description": "按 generationId 查询一次合成/转录的使用记录（引擎、模型、溯源、输入/输出哈希、状态），并附音频 URL 与本地文件路径（无输出时如实为 null）。",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "generationId": {
+          "type": "string",
+          "description": "生成记录 ID（generate_speech/transcribe 返回的 generationId）"
+        }
+      },
+      "required": [
+        "generationId"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

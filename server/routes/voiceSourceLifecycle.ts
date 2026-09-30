@@ -15,6 +15,7 @@ import { fail } from './respond';
 import { writeJsonAtomic as writeJson } from '../lib/atomicFiles';
 // #37 许可元数据：冻结时点固化（SPDX 纪律与字段来源见 lib/profileLicense）
 import { buildProfileLicense, type AuthorizationRecord } from '../lib/profileLicense';
+import { textConsistency } from '../lib/textConsistency';
 export { writeJson };
 
 /**
@@ -99,23 +100,9 @@ export async function invalidateSourceValidation(identityId: string, reason: str
   ]);
   await appendAudit(identityId, { action: 'source_validation_invalidated', reason });
 }
-function normalize(value: string) { return value.toLocaleLowerCase('zh-CN').replace(/[\s\p{P}\p{S}]/gu, ''); }
-function levenshtein(left: string, right: string) {
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row++) {
-    let diagonal = previous[0]; previous[0] = row;
-    for (let column = 1; column <= right.length; column++) {
-      const old = previous[column];
-      previous[column] = Math.min(previous[column] + 1, previous[column - 1] + 1, diagonal + (left[row - 1] === right[column - 1] ? 0 : 1));
-      diagonal = old;
-    }
-  }
-  return previous[right.length];
-}
+// 一致性口径收口至共享实现（中文数字↔阿拉伯数字等价归一，PR-3 处置选项 A）
 export function consistency(expected: string, actual: string) {
-  const left = normalize(expected); const right = normalize(actual);
-  if (!left || !right) return null;
-  return Math.max(0, Math.round((1 - levenshtein(left, right) / Math.max(left.length, right.length)) * 1000) / 10);
+  return textConsistency(expected, actual);
 }
 export function pass(id: string, label: string, value: string, detail?: string): ValidationCheck { return { id, label, value, detail, state: 'passed' }; }
 export function failed(id: string, label: string, detail: string): ValidationCheck { return { id, label, value: '未通过', detail, state: 'failed' }; }

@@ -19,3 +19,7 @@ __pycache__/
 
 # 本地工具产物
 .playwright-cli/
+
+# Golden Path 验收音频证据：WAV 本体不入 git（公开仓库历史保持精简），
+# 由 artifacts/wav-manifest.sha256 哈希锚定；正式打包随 PR-4 release-evidence
+artifacts/**/*.wav

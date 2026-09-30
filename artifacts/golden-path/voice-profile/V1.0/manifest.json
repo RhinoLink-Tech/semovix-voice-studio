@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 2,
+  "identity": {
+    "id": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "name": "Semovix 官方讲解员（Golden Path）",
+    "sourceType": "AI_DESIGNED"
+  },
+  "version": "V1.0",
+  "profileName": "Semovix 官方讲解员 V1",
+  "frozenAt": "2026-09-30T11:20:56.673Z",
+  "referenceCandidate": "#007",
+  "referenceAudio": {
+    "file": "reference.wav",
+    "sha256": "fb5cd4e52de7d2f92184912c75c0dd0eff09549c1bb639e8b74a88f1dbb90244",
+    "duration": 10.8
+  },
+  "productionModel": "Qwen3-TTS-12Hz-1.7B-Base",
+  "model": {
+    "provider": "Qwen",
+    "repoId": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    "revision": null,
+    "localPath": null,
+    "localPathFingerprint": null,
+    "runtimeVersion": "0.1.1",
+    "torchVersion": "2.14.0",
+    "deviceType": "mps",
+    "dtype": "torch.bfloat16",
+    "capturedAt": "2026-09-30T11:16:23.352Z"
+  },
+  "language": "中文（普通话）",
+  "referenceText": "本参考文本用于统一 Golden Path 验收口径：声音应当清晰、自然、稳定，经得起长期回听。",
+  "designBatch": {
+    "id": "20260930-04",
+    "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+  },
+  "review": {
+    "finalists": [
+      7,
+      2
+    ],
+    "reviewedAt": "2026-09-30T11:15:56.142Z"
+  },
+  "validation": {
+    "savedAt": "2026-09-30T11:20:56.637Z",
+    "candidateId": 7,
+    "humanListeningConfirmed": true,
+    "report": {
+      "file": "validation-report.json",
+      "sha256": "adfa2d739a72dfd22c270f8cea7d10c3498a5765ced84444009da16714ff11bb"
+    }
+  },
+  "usageBoundaries": null
+}

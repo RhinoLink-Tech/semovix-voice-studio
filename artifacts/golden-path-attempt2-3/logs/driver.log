@@ -1,0 +1,101 @@
+[2026-09-30T10:11:30.719Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T10:11:30.723Z] ▶ 0-环境快照
+[2026-09-30T10:11:30.932Z] ✔ 0-环境快照 完成（0.2s）
+[2026-09-30T10:11:30.932Z] ▶ 1-创建声音角色
+[2026-09-30T10:11:30.937Z] 复用既有声音角色 voice-d1d6de59-632c-4674-9694-3ee2a93b68d9（Semovix 官方讲解员（Golden Path））
+[2026-09-30T10:11:30.937Z] ✔ 1-创建声音角色 完成（0s）
+[2026-09-30T10:11:30.938Z] ▶ 2-创建设计批次
+[2026-09-30T10:11:30.959Z] ✔ 2-创建设计批次 完成（0s）
+[2026-09-30T10:11:30.959Z] ▶ 3-候选生成
+[2026-09-30T10:11:30.960Z] 设计批次: queued 0/12
+[2026-09-30T10:11:30.962Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"ready","available":true,"loadAttempts":1,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":0,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":0,"error":null}}
+[2026-09-30T10:11:45.970Z] 设计批次: queued 0/12
+[2026-09-30T10:12:00.981Z] 设计批次: queued 0/12
+[2026-09-30T10:12:15.988Z] 设计批次: queued 0/12
+[2026-09-30T10:12:31.004Z] 设计批次: queued 0/12
+[2026-09-30T10:12:46.016Z] 设计批次: queued 0/12
+[2026-09-30T10:13:01.026Z] 设计批次: queued 0/12
+[2026-09-30T10:13:16.034Z] 设计批次: queued 0/12
+[2026-09-30T10:13:31.043Z] 设计批次: queued 0/12
+[2026-09-30T10:13:46.048Z] 设计批次: queued 0/12
+[2026-09-30T10:14:01.058Z] 设计批次: queued 0/12
+[2026-09-30T10:14:16.068Z] 设计批次: queued 0/12
+[2026-09-30T10:14:31.082Z] 设计批次: queued 0/12
+[2026-09-30T10:14:46.093Z] 设计批次: queued 0/12
+[2026-09-30T10:15:01.151Z] 设计批次: queued 0/12
+[2026-09-30T10:15:16.157Z] 设计批次: queued 0/12
+[2026-09-30T10:15:31.169Z] 设计批次: queued 0/12
+[2026-09-30T10:15:46.174Z] 设计批次: queued 0/12
+[2026-09-30T10:16:01.183Z] 设计批次: queued 0/12
+[2026-09-30T10:16:16.190Z] 设计批次: queued 0/12
+[2026-09-30T10:16:31.200Z] 设计批次: queued 0/12
+[2026-09-30T10:16:46.206Z] 设计批次: queued 0/12
+[2026-09-30T10:17:01.213Z] 设计批次: queued 0/12
+[2026-09-30T10:17:16.224Z] 设计批次: queued 0/12
+[2026-09-30T10:17:31.234Z] 设计批次: queued 0/12
+[2026-09-30T10:17:46.239Z] 设计批次: queued 0/12
+[2026-09-30T10:18:01.252Z] 设计批次: queued 0/12
+[2026-09-30T10:18:16.262Z] 设计批次: queued 0/12
+[2026-09-30T10:18:31.269Z] 设计批次: queued 0/12
+[2026-09-30T10:18:46.284Z] 设计批次: queued 0/12
+[2026-09-30T10:19:01.306Z] 设计批次: queued 0/12
+[2026-09-30T10:19:16.314Z] 设计批次: queued 0/12
+[2026-09-30T10:19:31.327Z] 设计批次: queued 0/12
+[2026-09-30T10:19:46.334Z] 设计批次: queued 0/12
+[2026-09-30T10:20:01.344Z] 设计批次: queued 0/12
+[2026-09-30T10:20:16.353Z] 设计批次: queued 0/12
+[2026-09-30T10:20:31.360Z] 设计批次: queued 0/12
+[2026-09-30T10:20:46.379Z] 设计批次: queued 0/12
+[2026-09-30T10:21:01.402Z] 设计批次: queued 0/12
+[2026-09-30T10:21:16.415Z] 设计批次: queued 0/12
+[2026-09-30T10:21:31.424Z] 设计批次: queued 0/12
+[2026-09-30T10:21:40.893Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T10:21:40.893Z] ▶ 0-环境快照
+[2026-09-30T10:21:41.021Z] ✔ 0-环境快照 完成（0.1s）
+[2026-09-30T10:21:41.021Z] ▶ 1-创建声音角色
+[2026-09-30T10:21:41.025Z] 复用既有声音角色 voice-d1d6de59-632c-4674-9694-3ee2a93b68d9（Semovix 官方讲解员（Golden Path））
+[2026-09-30T10:21:41.025Z] ✔ 1-创建声音角色 完成（0s）
+[2026-09-30T10:21:41.025Z] ▶ 2-创建设计批次
+[2026-09-30T10:21:41.042Z] ✔ 2-创建设计批次 完成（0s）
+[2026-09-30T10:21:41.042Z] ▶ 3-候选生成
+[2026-09-30T10:21:41.046Z] 设计批次: queued 0/12
+[2026-09-30T10:21:41.049Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"ready","available":true,"loadAttempts":1,"error":null},"voice_clone":{"state":"cold","available":false,"loadAttempts":0,"error":null},"whisper_asr":{"state":"cold","available":false,"loadAttempts":0,"error":null}}
+[2026-09-30T10:21:56.057Z] 设计批次: running 0/12
+[2026-09-30T10:22:11.062Z] 设计批次: running 1/12
+[2026-09-30T10:22:26.069Z] 设计批次: running 2/12
+[2026-09-30T10:22:41.074Z] 设计批次: running 3/12
+[2026-09-30T10:22:56.079Z] 设计批次: running 4/12
+[2026-09-30T10:23:11.088Z] 设计批次: running 5/12
+[2026-09-30T10:23:26.095Z] 设计批次: running 6/12
+[2026-09-30T10:23:41.103Z] 设计批次: running 7/12
+[2026-09-30T10:23:56.109Z] 设计批次: running 9/12
+[2026-09-30T10:24:11.116Z] 设计批次: running 9/12
+[2026-09-30T10:24:26.120Z] 设计批次: running 11/12
+[2026-09-30T10:24:41.129Z] 设计批次: completed 12/12 → 终态
+[2026-09-30T10:24:41.131Z] ✔ 3-候选生成 完成（180.1s）
+[2026-09-30T10:24:41.131Z] ▶ 4-匿名评审
+[2026-09-30T10:24:41.142Z] 评审入围：#12、#8；占位否决：#1
+[2026-09-30T10:24:41.143Z] ✔ 4-匿名评审 完成（0s）
+[2026-09-30T10:24:41.143Z] ▶ 5-内容检查
+[2026-09-30T10:24:41.158Z] 内容检查: queued 0/16
+[2026-09-30T10:25:01.162Z] 内容检查: warming 0/16
+[2026-09-30T10:25:01.164Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":1,"error":null},"voice_clone":{"state":"ready","available":true,"loadAttempts":1,"error":null},"whisper_asr":{"state":"loading","available":false,"loadAttempts":1,"error":null}}
+[2026-09-30T10:25:21.170Z] 内容检查: running 0/16
+[2026-09-30T10:25:21.172Z] worker engines: {"qwen_tts":{"state":"cold","available":false,"loadAttempts":0,"error":null},"voice_design":{"state":"cold","available":false,"loadAttempts":1,"error":null},"voice_clone":{"state":"ready","available":true,"loadAttempts":1,"error":null},"whisper_asr":{"state":"ready","available":true,"loadAttempts":1,"error":null}}
+[2026-09-30T10:25:41.175Z] 内容检查: running 2/16
+[2026-09-30T10:26:01.180Z] 内容检查: running 3/16
+[2026-09-30T10:26:21.190Z] 内容检查: running 4/16
+[2026-09-30T10:26:41.200Z] 内容检查: running 5/16
+[2026-09-30T10:27:01.228Z] 内容检查: running 6/16
+[2026-09-30T10:27:21.234Z] 内容检查: running 8/16
+[2026-09-30T10:27:41.239Z] 内容检查: running 9/16
+[2026-09-30T10:28:01.261Z] 内容检查: running 10/16
+[2026-09-30T10:28:21.279Z] 内容检查: running 11/16
+[2026-09-30T10:28:41.290Z] 内容检查: running 13/16
+[2026-09-30T10:29:01.307Z] 内容检查: running 14/16
+[2026-09-30T10:29:21.313Z] 内容检查: running 15/16
+[2026-09-30T10:29:41.320Z] 内容检查: completed 16/16 → 终态
+[2026-09-30T10:29:41.327Z] 候选 #12：attention，tasks=5 repeats=3
+[2026-09-30T10:29:41.327Z] 候选 #8：attention，tasks=5 repeats=3
+[2026-09-30T10:29:41.327Z] ✔ 5-内容检查 完成（300.2s）
+[2026-09-30T10:29:41.342Z] ✘ Golden Path 失败：无候选通过内容检查：[[12,"attention"],[8,"attention"]]

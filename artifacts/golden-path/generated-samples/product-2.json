@@ -1,0 +1,13 @@
+{
+  "requestText": "Golden Path 验收第二段文案：二零二六年九月三十日，版本零点一点零，共十二个候选，两段文案、两种内容风格。",
+  "generationId": "tts-muo0lph4-sz8h7k",
+  "audioUrl": "/api/artifacts/tts-muo0lph4-sz8h7k",
+  "provenance": {
+    "voiceIdentityId": "voice-d1d6de59-632c-4674-9694-3ee2a93b68d9",
+    "voiceProfileVersion": "V1.0",
+    "manifestHash": "90b4ea407ffe12e781131d93205eaea8ef60976528e02709cf3b0fa3b3f766af",
+    "workerEngine": "voice_clone"
+  },
+  "outputSha256": "5086394cc797990b90efcf277f99ef222f8f49d5d9440f8a24310d2f52ab798a",
+  "bytes": 476204
+}
