@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Router } from 'express';
 import { getConfig } from '../config';
+import { wavDuration } from '../audio/wav';
 import {
   listVoiceIdentities as listStoredVoiceIdentities,
   readVoiceIdentity as readStoredVoiceIdentity,
@@ -237,4 +238,72 @@ voiceIdentitiesRouter.put('/voice-identities/:id/source-config', async (req, res
     const config = await saveVoiceIdentitySourceConfig(req.params.id, source, configuration);
     res.json({ config });
   } catch (error: any) { fail(res, 500, error?.message || '保存声音来源配置失败。', 'source_config_write_failed'); }
+});
+
+/* ---------------- 列表页统一试听样音 ---------------- */
+
+/**
+ * 列表页「试听」的统一样音解析：已发布角色优先用冻结版本的 reference.wav
+ * （voice-profiles/<id>/<version>/，最权威的正式样音）；草稿角色回落到
+ * 各来源已归档的样音（克隆样音 / Provider 试听 / 导入参考音频）。
+ * 返回 null 表示尚无可试听的真实音频——调用方必须如实提示，不得伪造。
+ */
+type ResolvedSample =
+  | { kind: 'frozen'; file: string; durationSec: number; label: string }
+  | { kind: 'clone' | 'preset' | 'imported'; audioUrl: string; durationSec: number; label: string };
+
+export async function resolveIdentitySample(identity: Pick<Identity, 'id' | 'source' | 'status' | 'version'>): Promise<ResolvedSample | null> {
+  if (identity.status === '已发布' && identity.version && identity.version !== '尚未冻结') {
+    try {
+      const file = path.join(getConfig().libraryDir, 'voice-profiles', identity.id, identity.version, 'reference.wav');
+      const durationSec = wavDuration(await fs.readFile(file));
+      if (durationSec > 0) return { kind: 'frozen', file, durationSec, label: `${identity.version} 冻结正式样音` };
+    } catch { /* 版本目录不完整：回落到草稿样音 */ }
+  }
+  const readSampleJson = async <T,>(file: string): Promise<T | null> => {
+    try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; } catch { return null; }
+  };
+  const base = identityDirectory(identity.id);
+  if (identity.source === '授权真人克隆') {
+    const samples = await readSampleJson<Array<{ id: string; duration: number; createdAt?: string }>>(path.join(base, 'clone', 'samples.json'));
+    const latest = [...(samples || [])].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+    if (latest) return { kind: 'clone', audioUrl: `/api/voice-identities/${identity.id}/clone-samples/${latest.id}/audio`, durationSec: latest.duration || 0, label: '最新克隆样音' };
+  }
+  if (identity.source === 'Provider 预置音色') {
+    const selection = await readSampleJson<{ preview?: { status: string; duration?: number } }>(path.join(base, 'provider-preset', 'selection.json'));
+    if (selection?.preview?.status === 'completed') {
+      return { kind: 'preset', audioUrl: `/api/voice-identities/${identity.id}/provider-presets/preview`, durationSec: selection.preview.duration || 0, label: 'Provider 试听样音' };
+    }
+  }
+  if (identity.source === '导入已有 Voice Profile') {
+    const record = await readSampleJson<{ referenceDuration?: number }>(path.join(base, 'imported-profile', 'import.json'));
+    if (record) return { kind: 'imported', audioUrl: `/api/voice-identities/${identity.id}/imported-profile/reference-audio`, durationSec: record.referenceDuration || 0, label: '导入参考音频' };
+  }
+  return null;
+}
+
+voiceIdentitiesRouter.get('/voice-identities/:id/sample', async (req, res) => {
+  if (!safeId(res, req.params.id)) return;
+  try {
+    const identity = await readIdentity(req.params.id);
+    if (!identity) return fail(res, 404, '声音角色不存在。', 'identity_not_found');
+    const sample = await resolveIdentitySample(identity);
+    res.json({ sample: sample ? { audioUrl: `/api/voice-identities/${identity.id}/sample/audio`, durationSec: sample.durationSec, label: sample.label } : null });
+  } catch (error: any) { fail(res, 500, error?.message || '读取声音角色样音失败。', 'identity_sample_read_failed'); }
+});
+
+voiceIdentitiesRouter.get('/voice-identities/:id/sample/audio', async (req, res) => {
+  if (!safeId(res, req.params.id)) return;
+  try {
+    const identity = await readIdentity(req.params.id);
+    if (!identity) return fail(res, 404, '声音角色不存在。', 'identity_not_found');
+    const sample = await resolveIdentitySample(identity);
+    if (!sample) return fail(res, 404, '该声音角色尚无可试听的样音。', 'identity_sample_not_found');
+    if (sample.kind === 'frozen') {
+      res.setHeader('Content-Type', 'audio/wav');
+      return res.send(await fs.readFile(sample.file));
+    }
+    // 草稿样音沿用各来源既有端点（自带 Hash 完整性校验），307 保持 GET 语义
+    return res.redirect(307, sample.audioUrl);
+  } catch (error: any) { fail(res, 500, error?.message || '读取声音角色样音失败。', 'identity_sample_read_failed'); }
 });

@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AudioLines, Building2, Check, ChevronDown, ChevronRight, CircleHelp, FileInput,
-  Headphones, LayoutGrid, List, Mic2, MoreHorizontal, Play,
+  Headphones, LayoutGrid, List, Mic2, MoreHorizontal, Pause, Play,
   Plus, Search, ShieldCheck, SlidersHorizontal, UserRound, Volume2,
   X, Maximize2, FileText, Layers3, Sparkles,
 } from 'lucide-react';
@@ -25,18 +25,20 @@ type VoiceIdentity = {
   status: VoiceStatus;
   license: string;
   mine?: boolean;
-  sampleDuration?: number;
 };
 
+/** /api/voice-identities/:id/sample 返回的真实样音（null = 尚未归档） */
+type IdentitySample = { audioUrl: string; durationSec: number; label: string };
+
 const INITIAL_IDENTITIES: VoiceIdentity[] = [
-  { id: 'semovix', name: 'Semovix 官方讲解员', ownerDescription: '企业 AI 原生语义智能平台', ownerType: '企业 / 品牌', ownerName: 'Semovix', ownerGroup: '企业 / 品牌', description: '成熟、专业、可信的中文男声，适合产品介绍、技术科普与品牌传播。', source: 'AI 原创设计', language: '中文', version: 'V1.0', status: '已发布', license: '不适用', mine: true, sampleDuration: 23 },
-  { id: 'xino', name: '产品助手女声', ownerDescription: 'Xino 产品引导与操作提示', ownerType: '产品', ownerName: 'Xino', ownerGroup: '产品', description: '温和、清晰、亲切的中文女声，适合产品引导、功能讲解和帮助文档。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '评审中', license: '不适用', mine: true, sampleDuration: 21 },
-  { id: 'xiaofei', name: '小飞哥技术解读', ownerDescription: '技术分享与深度解读栏目', ownerType: '栏目 / IP', ownerName: '小飞哥系列', ownerGroup: '栏目 / IP', description: '自然、理性、有思考感的中文男声，适合技术分析和深度内容。', source: '授权真人克隆', language: '中文', version: 'V1.2', status: '已发布', license: '有效', sampleDuration: 26 },
-  { id: 'launch', name: '发布会女声', ownerDescription: '2026 年度发布会主题演讲', ownerType: '活动', ownerName: '2026 发布会', ownerGroup: '企业 / 品牌', description: '大气、沉稳、富有感染力的中文女声，适合发布会和重要活动。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '草稿', license: '不适用', mine: true, sampleDuration: 24 },
-  { id: 'global', name: '国际化产品解说', ownerDescription: '海外市场产品介绍', ownerType: '产品', ownerName: 'Global', ownerGroup: '产品', description: '自然流畅的英文男声，适合国际化产品介绍和演示视频。', source: '预置音色', language: '英文', version: 'V1.0', status: '已发布', license: 'Provider 许可', sampleDuration: 22 },
-  { id: 'service', name: '客服助手', ownerDescription: '客服应答与语音提示', ownerType: '部门', ownerName: '客户服务', ownerGroup: '企业 / 品牌', description: '清晰、友好、耐心的中文女声，适合客服应答和系统提示。', source: '预置音色', language: '中文', version: 'V0.9', status: '评审中', license: 'Provider 许可', sampleDuration: 20 },
-  { id: 'brand', name: '品牌故事旁白', ownerDescription: '品牌故事与企业文化内容', ownerType: '企业 / 品牌', ownerName: '品牌传播', ownerGroup: '企业 / 品牌', description: '沉着、细腻的中文旁白声音，适合品牌故事与企业文化内容。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '草稿', license: '不适用', sampleDuration: 25 },
-  { id: 'teacher', name: '讲师课程配音', ownerDescription: '授权讲师的课程语音身份', ownerType: '个人 / 讲师', ownerName: '课程讲师', ownerGroup: '个人 / 讲师', description: '清晰、耐听的中文讲解声音，适合课程内容和知识分享。', source: '授权真人克隆', language: '中文', version: 'V0.8', status: '已退役', license: '已到期', sampleDuration: 19 },
+  { id: 'semovix', name: 'Semovix 官方讲解员', ownerDescription: '企业 AI 原生语义智能平台', ownerType: '企业 / 品牌', ownerName: 'Semovix', ownerGroup: '企业 / 品牌', description: '成熟、专业、可信的中文男声，适合产品介绍、技术科普与品牌传播。', source: 'AI 原创设计', language: '中文', version: 'V1.0', status: '已发布', license: '不适用', mine: true },
+  { id: 'xino', name: '产品助手女声', ownerDescription: 'Xino 产品引导与操作提示', ownerType: '产品', ownerName: 'Xino', ownerGroup: '产品', description: '温和、清晰、亲切的中文女声，适合产品引导、功能讲解和帮助文档。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '评审中', license: '不适用', mine: true },
+  { id: 'xiaofei', name: '小飞哥技术解读', ownerDescription: '技术分享与深度解读栏目', ownerType: '栏目 / IP', ownerName: '小飞哥系列', ownerGroup: '栏目 / IP', description: '自然、理性、有思考感的中文男声，适合技术分析和深度内容。', source: '授权真人克隆', language: '中文', version: 'V1.2', status: '已发布', license: '有效' },
+  { id: 'launch', name: '发布会女声', ownerDescription: '2026 年度发布会主题演讲', ownerType: '活动', ownerName: '2026 发布会', ownerGroup: '企业 / 品牌', description: '大气、沉稳、富有感染力的中文女声，适合发布会和重要活动。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '草稿', license: '不适用', mine: true },
+  { id: 'global', name: '国际化产品解说', ownerDescription: '海外市场产品介绍', ownerType: '产品', ownerName: 'Global', ownerGroup: '产品', description: '自然流畅的英文男声，适合国际化产品介绍和演示视频。', source: '预置音色', language: '英文', version: 'V1.0', status: '已发布', license: 'Provider 许可' },
+  { id: 'service', name: '客服助手', ownerDescription: '客服应答与语音提示', ownerType: '部门', ownerName: '客户服务', ownerGroup: '企业 / 品牌', description: '清晰、友好、耐心的中文女声，适合客服应答和系统提示。', source: '预置音色', language: '中文', version: 'V0.9', status: '评审中', license: 'Provider 许可' },
+  { id: 'brand', name: '品牌故事旁白', ownerDescription: '品牌故事与企业文化内容', ownerType: '企业 / 品牌', ownerName: '品牌传播', ownerGroup: '企业 / 品牌', description: '沉着、细腻的中文旁白声音，适合品牌故事与企业文化内容。', source: 'AI 原创设计', language: '中文', version: 'V0.1', status: '草稿', license: '不适用' },
+  { id: 'teacher', name: '讲师课程配音', ownerDescription: '授权讲师的课程语音身份', ownerType: '个人 / 讲师', ownerName: '课程讲师', ownerGroup: '个人 / 讲师', description: '清晰、耐听的中文讲解声音，适合课程内容和知识分享。', source: '授权真人克隆', language: '中文', version: 'V0.8', status: '已退役', license: '已到期' },
 ];
 
 const STATUS_ITEMS = ['全部角色', '我创建的', '已发布', '评审中', '草稿', '已退役'] as const;
@@ -90,6 +92,12 @@ export function VoiceIdentitiesView({ globalSearch = '', onUseForGeneration, onC
   const [preview, setPreview] = useState<VoiceIdentity | null>(INITIAL_IDENTITIES[0]);
   const [detail, setDetail] = useState<VoiceIdentity | null>(null);
   const [playerOpen, setPlayerOpen] = useState(true);
+  // 试听走真实归档样音：已发布角色 = 冻结版本 reference.wav；草稿 = 各来源已归档样音
+  const [sample, setSample] = useState<IdentitySample | null>(null);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   // #36 可移植包导出结果提示（桌面显示保存路径；Web 自动下载）
   const [exportNote, setExportNote] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -138,6 +146,38 @@ export function VoiceIdentitiesView({ globalSearch = '', onUseForGeneration, onC
 
   useEffect(() => { setPage(1); }, [globalSearch, query, statusFilter, ownerFilter, sourceFilter, languageFilter, licenseFilter, view]);
 
+  // 切换试听对象时解析真实样音；接口 404/失败 → null（如实显示「暂无样音」）
+  useEffect(() => {
+    if (!preview) return;
+    let live = true;
+    setSample(null);
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setSampleLoading(true);
+    fetch(`/api/voice-identities/${encodeURIComponent(preview.id)}/sample`)
+      .then(response => response.ok ? response.json() as Promise<{ sample: IdentitySample | null }> : null)
+      .then(result => { if (live) setSample(result?.sample ?? null); })
+      .catch(() => undefined)
+      .finally(() => { if (live) setSampleLoading(false); });
+    return () => { live = false; };
+  }, [preview]);
+
+  useEffect(() => { if (audioRef.current) audioRef.current.volume = volume / 100; }, [volume, sample]);
+
+  const togglePlayback = async () => {
+    const el = audioRef.current;
+    if (!el || !sample) return;
+    if (el.paused) { try { await el.play(); } catch { /* 浏览器自动播放策略拒绝时保持暂停态 */ } }
+    else el.pause();
+  };
+
+  const seek = (seconds: number) => {
+    const el = audioRef.current;
+    if (!el || !sample) return;
+    el.currentTime = seconds;
+    setCurrentTime(seconds);
+  };
+
   return <div className="voice-identities-page">
     <aside className="vi-sidebar" aria-label="声音角色筛选">
       <NavSection title="声音角色" items={STATUS_ITEMS} active={statusFilter} onSelect={setStatusFilter} counts={counts.status} kind="status" />
@@ -169,7 +209,7 @@ export function VoiceIdentitiesView({ globalSearch = '', onUseForGeneration, onC
       {pageCount > 1 && <div className="vi-pagination"><button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={currentPage === 1}>上一页</button><span>{currentPage} / {pageCount}</span><button type="button" onClick={() => setPage(value => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount}>下一页</button></div>}
     </section>
 
-    {playerOpen && preview && <div className={`vi-player ${expanded ? 'is-expanded' : ''}`} role="region" aria-label="声音角色试听播放器"><div className="vi-player-identity"><div className="vi-player-mark"><AudioLines size={17} /></div><div><strong>{preview.name} {preview.version.replace(/\.\d$/, '')}</strong><span>正式样音</span></div></div><div className="vi-player-controls"><button type="button" className="vi-play" aria-label="播放样音" title="样音文件待接入" disabled><Play size={16} fill="currentColor" /></button><span>0:00</span><input type="range" min="0" max={preview.sampleDuration || 23} value="0" aria-label="播放进度" disabled /><span>{formatTime(preview.sampleDuration || 23)}</span></div><div className="vi-player-tail"><Volume2 size={17} /><input type="range" min="0" max="100" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="音量" /><button type="button" title="展开播放器" aria-label="展开播放器" onClick={() => setExpanded(value => !value)}><Maximize2 size={16} /></button><button type="button" title="关闭播放器" aria-label="关闭播放器" onClick={() => setPlayerOpen(false)}><X size={18} /></button></div>{expanded && <div className="vi-player-expanded">{preview.name} · {preview.source} · {preview.language} · {preview.version}</div>}</div>}
+    {playerOpen && preview && <div className={`vi-player ${expanded ? 'is-expanded' : ''}`} role="region" aria-label="声音角色试听播放器"><audio ref={audioRef} src={sample?.audioUrl} preload="metadata" onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)} /><div className="vi-player-identity"><div className="vi-player-mark"><AudioLines size={17} /></div><div><strong>{preview.name} {preview.version.replace(/\.\d$/, '')}</strong><span>{sample ? sample.label : sampleLoading ? '正在解析样音…' : '暂无样音'}</span></div></div><div className="vi-player-controls"><button type="button" className="vi-play" aria-label={isPlaying ? '暂停样音' : '播放样音'} title={sample ? undefined : '该声音角色尚未归档样音'} disabled={!sample} onClick={() => void togglePlayback()}>{isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button><span>{formatTime(currentTime)}</span><input type="range" min="0" max={sample?.durationSec || 0} step="0.1" value={Math.min(currentTime, sample?.durationSec || 0)} aria-label="播放进度" disabled={!sample} onChange={event => seek(Number(event.target.value))} /><span>{sample ? formatTime(Math.round(sample.durationSec)) : '--:--'}</span></div><div className="vi-player-tail"><Volume2 size={17} /><input type="range" min="0" max="100" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="音量" /><button type="button" title="展开播放器" aria-label="展开播放器" onClick={() => setExpanded(value => !value)}><Maximize2 size={16} /></button><button type="button" title="关闭播放器" aria-label="关闭播放器" onClick={() => setPlayerOpen(false)}><X size={18} /></button></div>{expanded && <div className="vi-player-expanded">{preview.name} · {preview.source} · {preview.language} · {preview.version}</div>}</div>}
 
     {detail && <div className="vi-overlay" onMouseDown={() => setDetail(null)}><aside className="vi-detail" onMouseDown={event => event.stopPropagation()} aria-label="声音角色详情"><div className="vi-panel-header"><span>声音角色详情</span><button type="button" onClick={() => setDetail(null)} aria-label="关闭详情"><X size={18} /></button></div><div className="vi-detail-hero"><WaveThumb source={detail.source} /><div><h2>{detail.name}</h2><p>{detail.ownerDescription}</p><span className={`vi-status vi-status--${detail.status === '已发布' ? 'published' : detail.status === '评审中' ? 'review' : detail.status === '草稿' ? 'draft' : 'retired'}`}>{detail.status}</span></div></div><p className="vi-detail-copy">{detail.description}</p><dl><div><dt>归属对象</dt><dd>{detail.ownerType} · {detail.ownerName}</dd></div><div><dt>创建方式</dt><dd>{detail.source}</dd></div><div><dt>语言</dt><dd>{detail.language}</dd></div><div><dt>当前版本</dt><dd>{detail.version}</dd></div><div><dt>授权状态</dt><dd>{detail.license}</dd></div></dl><button className="vi-detail-preview" type="button" onClick={() => { setPreview(detail); setPlayerOpen(true); setDetail(null); }}><Headphones size={16} />试听正式样音</button>
           {detail.status === '已发布' && <div className="vi-detail-export">
