@@ -85,9 +85,10 @@ bun run build
 
 ## 开源与第三方许可状态
 
-- 仓库当前**没有 LICENSE**：代码来源审查正在进行（[CODE_PROVENANCE.md](CODE_PROVENANCE.md)），最终许可证由项目所有者在审查结论明确后决定。
-- 本项目在能力与架构层面参考了 `debpalash/VoiceStudio`（AGPL-3.0）的公开设计（记录见 [docs/001.md](docs/001.md)）；逐文件来源审查尚未完成，在此之前不对代码原创性做任何声明。
-- 第三方依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，模型权重许可矩阵见 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md)；两者均为待填写的审查模板。
+- 根目录 [LICENSE](LICENSE) 为未经修改的 Apache License 2.0 标准正文（项目所有者 2026-09-30 决定），随附 [NOTICE](NOTICE) 与发行物核查清单 [DISTRIBUTION_LICENSE_CHECKLIST.md](DISTRIBUTION_LICENSE_CHECKLIST.md)。
+- **许可证文件就位不等于正式发布**：逐文件来源审查尚未完成（[CODE_PROVENANCE.md](CODE_PROVENANCE.md)），审查完成前不以 Apache-2.0 正式发布相应代码，也不对代码原创性做超出该审查的声明。
+- 本项目在能力与架构层面参考了 `debpalash/VoiceStudio`（AGPL-3.0）的公开设计（记录见 [docs/001.md](docs/001.md)）；针对其全库自动化初筛未发现复制证据，逐文件人工结论以 [CODE_PROVENANCE.md](CODE_PROVENANCE.md) 为准。
+- 第三方依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（release-candidate 草稿，逐项版本与许可待对实际发行物核实），模型权重许可矩阵见 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md)；模型代码、模型权重与云服务条款不由根目录 Apache-2.0 覆盖。
 
 ## 受控环境交付
 

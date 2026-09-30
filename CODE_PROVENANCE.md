@@ -5,14 +5,14 @@
 
 ## 已确认事实（2026-09-30）
 
-1. 仓库当前没有 `LICENSE`；最终许可证由项目所有者在来源审查结论明确后决定，任何人（包括代码模型）不得擅自选择 MIT、Apache-2.0 等。
+1. 根目录 `LICENSE` 为未经修改的 Apache License 2.0 标准正文，由项目所有者于 2026-09-30 决定落地（此前仓库无 LICENSE；许可证选择始终归属项目所有者，代码模型不得擅自选择）。文件就位不解除下方「许可证决策门」的发布阻断。
 2. [docs/001.md](docs/001.md) 记录了对 `debpalash/VoiceStudio`（AGPL-3.0）的能力与架构参考，项目内原则为"参考设计、独立实现、不直接复制代码"；**该原则尚未经逐文件审查验证**。
 3. 审查判定规则：不得仅凭"技术栈不同"认定无复制，也不得仅凭"功能相似"认定存在复制；结论必须逐文件给出证据。
 4. 2026-09-30 完成针对 VoiceStudio 的三层自动化初筛（全库级，非逐文件），未发现复制证据；方法、结果与边界见下方「自动化初筛记录」。该记录是证据，逐文件人工结论仍待审查责任人给出。
 
 ## 自动化初筛记录（2026-09-30，对比 VoiceStudio）
 
-**对比对象**：本地克隆 `/Users/kingnet/workspace/github_workspace/VoiceStudio`（remote `debpalash/VoiceStudio`，HEAD `08a1592e`）；其根目录 LICENSE 实测为 AGPL-3.0 全文，与 docs/001.md 记载一致。
+**对比对象**：本地克隆 `<voicestudio-repo>`（remote `debpalash/VoiceStudio`，HEAD `08a1592e`；本机路径经 `VOICESTUDIO_REPO_ROOT` 或 `scripts/provenance/collect-provenance-evidence.sh` 内候选位置解析，不入公开记录）；其根目录 LICENSE 实测为 AGPL-3.0 全文，与 docs/001.md 记载一致。
 
 | 层 | 方法 | 覆盖范围 | 结果 |
 |---|---|---|---|
@@ -90,10 +90,13 @@ build/
 
 ## 许可证决策门
 
-只有同时满足以下条件，才能添加最终 `LICENSE`：
+2026-09-30：项目所有者决定根目录采用未经修改的 Apache License 2.0 标准正文，`LICENSE`、`NOTICE` 与 [DISTRIBUTION_LICENSE_CHECKLIST.md](DISTRIBUTION_LICENSE_CHECKLIST.md) 已落地。
+
+许可证文件就位不等于解除发布阻断。**正式以 Apache-2.0 发布相应代码，仍须同时满足：**
 
 1. 关键目录来源已逐文件确认；
-2. 第三方代码与资产已列入 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；
+2. 第三方代码与资产已列入 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，并对实际源码包与桌面安装包逐项核实；
 3. 对 AGPL 来源代码（`debpalash/VoiceStudio`）的实际复用结论明确（存在 / 不存在，及范围）；
-4. 模型权重许可与项目代码许可在 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md) 中分开说明；
-5. 项目所有者完成许可证选择。
+4. 模型权重许可与项目代码许可在 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md) 中分开说明。
+
+条件未齐前，仓库可继续公开开发，但不得将其描述为已正式以 Apache-2.0 发布的版本。
