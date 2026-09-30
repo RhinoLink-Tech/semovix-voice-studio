@@ -1,4 +1,4 @@
-[2026-09-30T11:12:40.843Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T11:12:40.843Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=<repo>/library
 [2026-09-30T11:12:40.844Z] ▶ 0-环境快照
 [2026-09-30T11:12:40.953Z] ✔ 0-环境快照 完成（0.1s）
 [2026-09-30T11:12:40.953Z] ▶ 1-创建声音角色
@@ -64,7 +64,7 @@
 [2026-09-30T11:21:41.763Z] MCP tools：check_runtime, generate_speech, get_generation, list_voice_profiles, transcribe
 [2026-09-30T11:21:55.257Z] ✘ 10-MCP消费 失败：TypeError [ERR_INVALID_URL]: fetch() URL is invalid
 [2026-09-30T11:21:55.257Z] ✘ Golden Path 失败：fetch() URL is invalid
-[2026-09-30T11:25:17.473Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T11:25:17.473Z] Golden Path 驱动启动：API=http://127.0.0.1:3210 WORKER=http://127.0.0.1:8800 library=<repo>/library
 [2026-09-30T11:25:17.473Z] ↷ 0-环境快照 上次已成功，续跑跳过
 [2026-09-30T11:25:17.474Z] ↷ 1-创建声音角色 上次已成功，续跑跳过
 [2026-09-30T11:25:17.474Z] ↷ 2-创建设计批次 上次已成功，续跑跳过
@@ -80,7 +80,7 @@
 [2026-09-30T11:25:36.207Z] MCP generate_speech：{
   "generationId": "tts-muo0qrt4-7ss116",
   "audioUrl": "http://127.0.0.1:3210/api/artifacts/tts-muo0qrt4-7ss116",
-  "filePath": "/Users/kingnet/workspace/Data…
+  "filePath": "~/workspace/Data…
 [2026-09-30T11:25:36.210Z] MCP 会话注销 → HTTP 200
 [2026-09-30T11:25:36.210Z] ✔ 10-MCP消费 完成（18.7s）
 [2026-09-30T11:25:36.210Z] ▶ 11-台账核对

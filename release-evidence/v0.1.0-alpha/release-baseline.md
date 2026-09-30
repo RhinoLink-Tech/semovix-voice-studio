@@ -46,4 +46,5 @@
 - 五角色签字（sign-off.md）；
 - 责任人重听 Golden Path 16 候选+验证音频与 3 条生成样本（sign-off.md §回听）；
 - CRITICAL_FILE_REVIEW 复核人签字（代码作者不能是唯一复核人）；
-- 云端 Gemini 条款由所有者确认。
+- 云端 Gemini 条款由所有者确认；
+- **git 历史含本机路径**：tag 重定位后的当前树已脱敏（tests/qa-notes.md §6），但 2026-09-30 之前的提交历史仍含 `/Users/...` 与个人卷名——公开仓库若需彻底清除需重写历史（filter-repo + force push），由所有者决定是否执行。

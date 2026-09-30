@@ -1,7 +1,7 @@
 {
   "generationId": "tts-muo0qrt4-7ss116",
   "audioUrl": "http://127.0.0.1:3210/api/artifacts/tts-muo0qrt4-7ss116",
-  "filePath": "/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library/artifacts/tts-muo0qrt4-7ss116.wav",
+  "filePath": "<repo>/library/artifacts/tts-muo0qrt4-7ss116.wav",
   "format": "wav",
   "durationSeconds": 5.9,
   "sampleRate": 24000,

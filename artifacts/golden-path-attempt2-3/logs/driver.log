@@ -1,4 +1,4 @@
-[2026-09-30T10:11:30.719Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T10:11:30.719Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=<repo>/library
 [2026-09-30T10:11:30.723Z] ▶ 0-环境快照
 [2026-09-30T10:11:30.932Z] ✔ 0-环境快照 完成（0.2s）
 [2026-09-30T10:11:30.932Z] ▶ 1-创建声音角色
@@ -49,7 +49,7 @@
 [2026-09-30T10:21:01.402Z] 设计批次: queued 0/12
 [2026-09-30T10:21:16.415Z] 设计批次: queued 0/12
 [2026-09-30T10:21:31.424Z] 设计批次: queued 0/12
-[2026-09-30T10:21:40.893Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/library
+[2026-09-30T10:21:40.893Z] Golden Path 驱动启动：API=http://127.0.0.1:3001 WORKER=http://127.0.0.1:8800 library=<repo>/library
 [2026-09-30T10:21:40.893Z] ▶ 0-环境快照
 [2026-09-30T10:21:41.021Z] ✔ 0-环境快照 完成（0.1s）
 [2026-09-30T10:21:41.021Z] ▶ 1-创建声音角色
