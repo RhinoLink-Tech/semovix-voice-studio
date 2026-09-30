@@ -1,0 +1,11 @@
+$ vitest run
+
+ RUN  v5.0.1 /Users/kingnet/workspace/DataAI-workspace/semovix-voice
+
+
+ Test Files  59 passed (59)
+      Tests  392 passed (392)
+   Start at  20:21:05
+   Duration  4.57s (tests 79%, import 13%, transform 7%, worker 1%)
+
+exit=0

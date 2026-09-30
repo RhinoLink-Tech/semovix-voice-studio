@@ -17,9 +17,9 @@ Semovix Voice Studio 是一个本地优先的声音角色与音频生产工作�
 
 ## 版本状态
 
-- 开发预览版，未发布任何安装包或正式版本。
+- 开发预览版（0.1.0-alpha）；桌面安装包尚未构建与发布，当前从源码运行。
 - CI 使用伪模型，只验证路由、状态机、幂等、Hash、文件安全与任务恢复，不能证明真实音质或真实模型运行通过。
-- 真实模型验收（Golden Path）尚未完成，见 [能力状态矩阵](docs/CAPABILITY_STATUS.md)。
+- 真实模型验收（Golden Path）已于 2026-09-30 **完成并通过**：单台 Apple Silicon macOS 上 11 阶段全链路（设计 → 评审 → 检查 → 发布 → 消费），见 [Golden Path 验收](docs/GOLDEN_PATH.md) 与 [能力状态矩阵](docs/CAPABILITY_STATUS.md)。已知的限制与缺陷以 [KNOWN_ISSUES.md](KNOWN_ISSUES.md) 为准。
 
 ## 本地与云端边界
 
@@ -77,7 +77,9 @@ bun run build
 
 ## 已知限制
 
-- 真实模型验收仅在单台开发机部分完成；macOS / Windows 安装包未构建、未验收。
+完整清单与等级见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)，要点：
+
+- 真实模型验收仅在单台 Apple Silicon macOS 开发机完成；Windows 安装包未构建、未验收。
 - 授权真人克隆为**实验性来源**：Alpha 版本已禁用其 Voice Profile 的正式发布与生产调用（授权到期/撤销的运行时策略检查尚未实现）；授权归档、参考样本与来源验证可正常使用。模型更新后的漂移策略未实现（发布基线后续 PR 范围）。
 - 同名模型权重更新后，不保证严格复现历史输出；推理时刻的模型身份会记录进 Manifest。
 - 多轨混音执行 EQ、压缩、峰值归一化与人声优先 Auto Ducking，**没有** BS.1770 / EBU R128 的 LUFS 响度测量闭环，不能用于证明达到任何平台响度标准。
@@ -88,8 +90,14 @@ bun run build
 
 - 根目录 [LICENSE](LICENSE) 为未经修改的 Apache License 2.0 标准正文（项目所有者 2026-09-30 决定），随附 [NOTICE](NOTICE) 与发行物核查清单 [DISTRIBUTION_LICENSE_CHECKLIST.md](DISTRIBUTION_LICENSE_CHECKLIST.md)。
 - **许可证文件就位不等于正式发布**：逐文件来源审查尚未完成（[CODE_PROVENANCE.md](CODE_PROVENANCE.md)），审查完成前不以 Apache-2.0 正式发布相应代码，也不对代码原创性做超出该审查的声明。
-- 本项目在能力与架构层面参考了 `debpalash/VoiceStudio`（AGPL-3.0）的公开设计（记录见 [docs/001.md](docs/001.md)）；针对其全库自动化初筛未发现复制证据，逐文件人工结论以 [CODE_PROVENANCE.md](CODE_PROVENANCE.md) 为准。
-- 第三方依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（release-candidate 草稿，逐项版本与许可待对实际发行物核实），模型权重许可矩阵见 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md)；模型代码、模型权重与云服务条款不由根目录 Apache-2.0 覆盖。
+- 本项目在能力与架构层面参考了 `debpalash/VoiceStudio`（AGPL-3.0）的公开设计（记录见 [docs/001.md](docs/001.md)）；针对其全库自动化初筛未发现复制证据，关键文件逐项审查见 [docs/provenance/CRITICAL_FILE_REVIEW.md](docs/provenance/CRITICAL_FILE_REVIEW.md)，逐文件人工结论以 [CODE_PROVENANCE.md](CODE_PROVENANCE.md) 为准。
+- 第三方依赖清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（release-candidate 草稿，逐项版本与许可待对实际发行物核实），模型权重许可矩阵见 [docs/MODEL_AND_LICENSE_MATRIX.md](docs/MODEL_AND_LICENSE_MATRIX.md)；模型代码、模型权重与云服务条款不由根目录 Apache-2.0 覆盖，品牌与名称见 [TRADEMARKS.md](TRADEMARKS.md)，资产边界见 [ASSET_LICENSES.md](ASSET_LICENSES.md)。
+
+## 安全与授权提示
+
+- 本项目定位**单机或受控内网**：无内置多用户身份认证；公网/共享网络部署需自行补齐基础设施边界（[docs/DELIVERY.md](docs/DELIVERY.md)）。
+- 授权真人克隆需要归档有效授权材料（文件、有效期、用途边界）；系统提供留档与验证，**不提供法律合规判断**，且 Alpha 期禁用其 Profile 正式发布与生产调用。
+- 安全策略与漏洞报告渠道见 [SECURITY.md](SECURITY.md)（请勿在公开 issue 报告安全问题）；贡献需签署 DCO（[CONTRIBUTING.md](CONTRIBUTING.md)）。
 
 ## 受控环境交付
 

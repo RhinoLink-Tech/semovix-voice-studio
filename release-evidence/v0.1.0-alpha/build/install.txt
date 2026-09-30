@@ -1,0 +1,5 @@
+[2.01ms] ".env"
+bun install v1.3.14 (0d9b296a)
+
+Checked 576 installs across 624 packages (no changes) [277.00ms]
+exit=0

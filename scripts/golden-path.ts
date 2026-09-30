@@ -122,7 +122,7 @@ async function stage<T>(name: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function requireOk(response: { status: number; json: any }, what: string) {
+function requireOk(response: { status: number; json: any; text?: string }, what: string) {
   if (response.status >= 300) throw new Error(`${what} → HTTP ${response.status}: ${JSON.stringify(response.json ?? response.text)}`);
   return response.json;
 }
@@ -291,9 +291,9 @@ async function main() {
   });
 
   // ── 6 人工回听确认 + 发布决策（agent 驱动，见诚实口径） ───
-  const publishCandidate = validationRun?.candidates.find(candidate => candidate.status === 'passed')
+  const publishCandidate = validationRun?.candidates.find((candidate: { status: string }) => candidate.status === 'passed')
     ?? (prevSummary ? { candidateId: prevSummary.publishCandidateId } as { candidateId: number } : undefined);
-  if (!publishCandidate) throw new Error(`无候选通过内容检查：${JSON.stringify(validationRun.candidates.map(candidate => [candidate.candidateId, candidate.status]))}`);
+  if (!publishCandidate) throw new Error(`无候选通过内容检查：${JSON.stringify((validationRun?.candidates ?? []).map((candidate: { candidateId: number; status: string }) => [candidate.candidateId, candidate.status]))}`);
   summary.publishCandidateId = publishCandidate.candidateId;
 
   await stage('6-发布决策', async () => {

@@ -1,0 +1,72 @@
+$ node scripts/release.mjs --dir
+> bun run build
+$ vite build && bun run build:server
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vite.config.ts:11:27). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 1728 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.46 kB │ gzip:   0.75 kB
+dist/assets/index-DEdJDE9U.css  228.68 kB │ gzip:  37.18 kB
+dist/assets/index-DFMhF_jt.js   874.70 kB │ gzip: 240.50 kB
+
+✓ built in 360ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+$ esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/server.mjs
+
+  dist/server.mjs  389.7kb
+
+⚡ Done in 43ms
+> bun run build:electron
+$ node scripts/build-electron.mjs
+
+  electron/build/main.cjs  1.5mb ⚠️
+
+⚡ Done in 29ms
+
+  electron/build/preload/preload.cjs  8.9kb
+
+⚡ Done in 1ms
+> bun install --production
+bun install v1.3.14 (0d9b296a)
+
++ @google/genai@2.24.0
++ @modelcontextprotocol/sdk@1.31.0
++ better-sqlite3@13.0.3
++ dotenv@17.4.2 (v18.0.4 available)
++ express@4.22.3 (v5.2.1 available)
++ jszip@3.10.2
++ multer@2.4.0
++ zod@4.6.5
+
+175 packages installed [893.00ms]
+
+Blocked 2 postinstalls. Run `bun pm untrusted` for details.
+> node node_modules/electron-builder/out/cli/cli.js --config electron-builder.yml --dir
+  • electron-builder  version=26.15.3 os=27.0.0
+  • loaded configuration  file=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/electron-builder.yml
+  • executing @electron/rebuild  electronVersion=44.4.5 arch=arm64 buildFromSource=false workspaceRoot=/Users/kingnet/workspace/DataAI-workspace/semovix-voice projectDir=./ appDir=./
+  • installing native dependencies  arch=arm64
+  • preparing       moduleName=better-sqlite3 arch=arm64
+  • finished        moduleName=better-sqlite3 arch=arm64
+  • completed installing native dependencies
+  • packaging       platform=darwin arch=arm64 electron=44.4.5 appOutDir=release/mac-arm64
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=/Users/kingnet/workspace/DataAI-workspace/semovix-voice/release/mac-arm64
+  • searching for node modules  pm=bun searchDir=/Users/kingnet/workspace/DataAI-workspace/semovix-voice
+  • note: bun does not support any CLI for dependency tree extraction, utilizing file traversal collector instead
+  • using manual traversal of node_modules to build dependency tree
+  • missing optional dependencies  dependencies=["@tailwindcss/oxide-linux-arm64-musl@4.3.3","@tailwindcss/oxide-linux-arm64-gnu@4.3.3","@tailwindcss/oxide-linux-x64-musl@4.3.3","@tailwindcss/oxide-linux-x64-gnu@4.3.3","@tailwindcss/oxide-wasm32-wasi@4.3.3","@tailwindcss/oxide-freebsd-x64@4.3.3","@tailwindcss/oxide-win32-arm64-msvc@4.3.3","@tailwindcss/oxide-win32-x64-msvc@4.3.3","@tailwindcss/oxide-linux-arm-gnueabihf@4.3.3","@tailwindcss/oxide-darwin-x64@4.3.3","@tailwindcss/oxide-android-arm64@4.3.3","lightningcss-darwin-x64@1.32.0","lightningcss-linux-x64-gnu@1.32.0","lightningcss-win32-x64-msvc@1.32.0","lightningcss-win32-arm64-msvc@1.32.0","lightningcss-linux-arm64-gnu@1.32.0","lightningcss-linux-arm-gnueabihf@1.32.0","lightningcss-linux-arm64-musl@1.32.0","lightningcss-linux-x64-musl@1.32.0","lightningcss-freebsd-x64@1.32.0","lightningcss-android-arm64@1.32.0","lightningcss-darwin-x64@1.33.0","lightningcss-linux-x64-gnu@1.33.0","lightningcss-win32-x64-msvc@1.33.0","lightningcss-win32-arm64-msvc@1.33.0","lightningcss-linux-arm64-gnu@1.33.0","lightningcss-linux-arm-gnueabihf@1.33.0","lightningcss-linux-arm64-musl@1.33.0","lightningcss-linux-x64-musl@1.33.0","lightningcss-freebsd-x64@1.33.0","lightningcss-android-arm64@1.33.0","@rolldown/binding-android-arm64@1.2.9","@rolldown/binding-win32-arm64-msvc@1.2.9","@rolldown/binding-linux-arm64-gnu@1.2.9","@rolldown/binding-linux-arm64-musl@1.2.9","@rolldown/binding-openharmony-arm64@1.2.9","@rolldown/binding-android-arm-eabi@1.2.9","@rolldown/binding-linux-arm-gnueabihf@1.2.9","@rolldown/binding-linux-ppc64-gnu@1.2.9","@rolldown/binding-linux-s390x-gnu@1.2.9","@rolldown/binding-darwin-x64@1.2.9","@rolldown/binding-win32-x64-msvc@1.2.9","@rolldown/binding-freebsd-x64@1.2.9","@rolldown/binding-linux-x64-gnu@1.2.9","@rolldown/binding-linux-x64-musl@1.2.9"]
+  • default Electron icon is used  reason=application icon is not set
+  • skipped macOS application code signing  reason=cannot find valid "Developer ID Application" identity or custom non-Apple code signing certificate, it could cause some undefined behaviour, e.g. macOS localized description not visible, see https://electron.build/code-signing allIdentities=     0 identities found
+                                                Valid identities only
+     0 valid identities found
+latest.json：v0.1.0-alpha（channel=stable，0 个产物，signing={"mac":"unsigned","win":"unsigned"}）
+exit=0

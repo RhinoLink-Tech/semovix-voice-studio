@@ -72,6 +72,16 @@ function stageRuntime() {
 
   fs.cpSync(path.join(root, 'dist'), path.join(stagingAppDir, 'dist'), { recursive: true });
   fs.cpSync(path.join(root, 'worker'), path.join(stagingAppDir, 'worker'), { recursive: true, filter: src => !src.includes('__pycache__') && !src.includes('.pytest_cache') });
+  // LIC-07：安装包必须随附 LICENSE / NOTICE / THIRD_PARTY_NOTICES.md（extraResources 落到
+  // Resources/app/ 真实磁盘；缺失即中止——不以"忘了拷"的口径发出无许可信息的发行物）
+  for (const licenseFile of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
+    const source = path.join(root, licenseFile);
+    if (!fs.existsSync(source)) {
+      console.error(`缺少 ${licenseFile}：发行物必须随附，无法打包`);
+      process.exit(1);
+    }
+    fs.copyFileSync(source, path.join(stagingAppDir, licenseFile));
+  }
 
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const dependencies = {};

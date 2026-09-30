@@ -1,0 +1,13 @@
+== 许可文件在发行物中的位置 ==
+release/staging/app/LICENSE
+release/staging/app/THIRD_PARTY_NOTICES.md
+release/staging/app/NOTICE
+release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/LICENSE
+release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/THIRD_PARTY_NOTICES.md
+release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/NOTICE
+
+== 禁分发资产扫描（音频/权重，应仅命中 Electron 内置资源之外为空）==
+（以上为空 = 无音频/权重入库）
+
+== 二进制体积分布（>5MB，确认无 ffmpeg/uv/权重）==
+9.1M Studio.app/Contents/Resources/app/node_modules/better-sqlite3/deps/sqlite3/sqlite3.c

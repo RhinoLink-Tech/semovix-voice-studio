@@ -15,7 +15,7 @@ import { textConsistency } from '../server/lib/textConsistency';
 const API = process.env.GP_API ?? 'http://127.0.0.1:3001';
 const OUT = path.resolve('artifacts/golden-path');
 const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8')) as {
-  batchId: string; manifestHash: string; voiceName: string; finalists: number[]; publishCandidateId: number;
+  run: string; batchId: string; manifestHash: string; voiceName: string; finalists: number[]; publishCandidateId: number;
 };
 const IDENTITY_ID = String(summary.voiceName.match(/profile:([^@]+)@/)?.[1] ?? '');
 const BATCH_ID = summary.batchId;

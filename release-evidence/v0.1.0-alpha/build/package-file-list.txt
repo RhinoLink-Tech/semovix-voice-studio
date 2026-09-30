@@ -1,0 +1,67 @@
+== 包内文件清单（Resources/app 运行面 + 关键壳文件） ==
+-- Contents/ 顶层:
+Frameworks
+Info.plist
+MacOS
+PkgInfo
+Resources
+
+-- Resources/app/（extraResources 运行面）:
+.
+..
+LICENSE
+NOTICE
+THIRD_PARTY_NOTICES.md
+dist
+node_modules
+package.json
+worker
+dist/:
+assets
+index.html
+server.mjs
+voice-logo.png
+worker/ 顶层:
+README.md
+app.py
+doctor.py
+requirements-base.txt
+requirements-cuda.txt
+requirements-lock-cuda.txt
+requirements-lock-macos.txt
+requirements-macos.txt
+tests
+启动Worker.command
+
+-- app/dist 体积:
+1.9M	release/mac-arm64/Semovix Voice Studio.app/Contents/Resources/app/dist
+-- app/node_modules 顶层包数:
+     144
+@google
+@hono
+@modelcontextprotocol
+@protobufjs
+@types
+accepts
+agent-base
+ajv
+ajv-formats
+append-field
+array-flatten
+base64-js
+better-sqlite3
+bignumber.js
+body-parser
+buffer-equal-constant-time
+busboy
+bytes
+call-bind-apply-helpers
+call-bound
+
+-- asar 壳内容（Electron 主进程）:
+/electron
+/electron/build
+/electron/build/main.cjs
+/electron/build/preload
+/electron/build/preload/preload.cjs
+/package.json
