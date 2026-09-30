@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Check,
@@ -22,7 +22,7 @@ import { EngineResourcePanel } from './EngineResourcePanel';
 import {
   getVoiceModelConfig,
   saveVoiceModelConfig,
-  resetVoiceModelConfig,
+  DEFAULT_VOICE_MODEL_CONFIG,
   AVAILABLE_TTS_MODELS,
   AVAILABLE_TRANSCRIBE_MODELS,
   AVAILABLE_REASONING_MODELS,
@@ -47,6 +47,15 @@ interface VoiceModelConfigModalProps {
 
 type ConfigTab = 'models' | 'personas' | 'parameters' | 'dialogue' | 'instruction' | 'diagnostics';
 
+const CONFIG_TABS = [
+  { id: 'models', label: '模型架构', icon: Cpu },
+  { id: 'personas', label: '发音人', icon: Volume2 },
+  { id: 'parameters', label: '声学参数', icon: Sliders },
+  { id: 'dialogue', label: '双人对谈', icon: Users },
+  { id: 'instruction', label: '系统指令', icon: FileText },
+  { id: 'diagnostics', label: '链路自检', icon: Activity },
+] as const;
+
 export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   isOpen,
   onClose,
@@ -56,6 +65,11 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   const [config, setConfig] = useState<VoiceModelConfig>(getVoiceModelConfig());
   const [activeTab, setActiveTab] = useState<ConfigTab>('personas');
   const [hasSaved, setHasSaved] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  }, [activeTab]);
 
   const handleUpdate = <K extends keyof VoiceModelConfig>(key: K, value: VoiceModelConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -227,13 +241,10 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
     }, 600);
   };
 
-  // Reset to system defaults
+  // Reset the draft only; Cancel must leave the saved configuration intact.
   const handleReset = () => {
-    const def = resetVoiceModelConfig();
-    setConfig(def);
-    if (onConfigChanged) {
-      onConfigChanged(def);
-    }
+    setConfig({ ...DEFAULT_VOICE_MODEL_CONFIG });
+    setHasSaved(false);
   };
 
   const emotionList = [
@@ -266,42 +277,43 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 sm:p-4">
       <div 
-        className="w-full max-w-4xl max-h-[90vh] bg-neutral-900 border border-neutral-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-neutral-100"
+        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl min-w-0 flex-col overflow-hidden rounded-2xl border border-neutral-700/80 bg-neutral-900 text-neutral-100 shadow-2xl sm:max-h-[90dvh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/60">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 bg-neutral-950/60 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-500/30 bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 text-cyan-400">
               <Cpu className="w-5 h-5 animate-pulse" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <h2 className="text-base font-bold text-neutral-100">语音大模型配置中心</h2>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-                  {config.ttsModel}
+                <span className="flex max-w-full min-w-0 items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 font-mono text-[11px] text-cyan-400">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-ping" />
+                  <span className="min-w-0 break-all">{config.ttsModel}</span>
                 </span>
               </div>
-              <p className="text-xs text-neutral-400 mt-0.5">
+              <p className="mt-0.5 text-xs leading-relaxed text-neutral-400">
                 自定义音频大模型架构、发音人性格偏好、声学参数、双人对谈与链路自检
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
             <button
               onClick={handleReset}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-neutral-700/60 flex items-center gap-1.5 transition-colors"
-              title="重置为官方推荐默认参数"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-700/60 px-2.5 py-1.5 text-xs font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+              title="在表单中恢复默认参数，保存后生效"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>恢复默认</span>
             </button>
             <button
               onClick={onClose}
+              aria-label="关闭大模型配置"
               className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -310,89 +322,33 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center px-6 border-b border-neutral-800 bg-neutral-950/40 text-xs font-medium overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('models')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'models'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Cpu className="w-4 h-4 text-cyan-400" />
-            <span>模型架构选择 (Architecture)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('personas')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'personas'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Volume2 className="w-4 h-4 text-cyan-400" />
-            <span>发音人画像 (Voices)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('parameters')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'parameters'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Sliders className="w-4 h-4 text-indigo-400" />
-            <span>声学生成参数 (Acoustics)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('dialogue')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'dialogue'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Users className="w-4 h-4 text-purple-400" />
-            <span>双人对谈角色 (Dialogue)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('instruction')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'instruction'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <FileText className="w-4 h-4 text-amber-400" />
-            <span>系统发音指令 (System Prompt)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('diagnostics')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-              activeTab === 'diagnostics'
-                ? 'border-cyan-400 text-cyan-300 font-semibold bg-cyan-500/5'
-                : 'border-transparent text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Activity className="w-4 h-4 text-emerald-400" />
-            <span>链路自检 (Diagnostics)</span>
-          </button>
-        </div>
+        <nav aria-label="大模型配置分类" className="grid shrink-0 grid-cols-2 border-b border-neutral-800 bg-neutral-950/40 px-2 text-xs font-medium sm:grid-cols-3 sm:px-4 lg:grid-cols-6">
+          {CONFIG_TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              aria-pressed={activeTab === id}
+              className={`flex min-h-11 items-center justify-center gap-2 border-b-2 px-2 py-2 text-center transition-colors ${
+                activeTab === id
+                  ? 'border-cyan-400 bg-cyan-500/10 font-semibold text-cyan-300'
+                  : 'border-transparent text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
 
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div ref={contentRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 sm:p-6">
           
           {/* TAB 0: Audio Model Architecture Selection */}
           {activeTab === 'models' && (
             <div className="space-y-6">
               <div>
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-neutral-200">音频大模型架构矩阵配置</h3>
                     <p className="text-xs text-neutral-400 mt-0.5">
                       选择底层驱动的语音合成 (TTS)、语音识别转写 (Transcribe) 以及声学编曲推理 (Reasoning) 模型
@@ -400,7 +356,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                   </div>
                   <button
                     onClick={() => setActiveTab('diagnostics')}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/40 border border-cyan-800/40 transition-colors"
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-cyan-800/40 bg-cyan-950/40 px-3 py-1.5 text-xs text-cyan-400 transition-colors hover:text-cyan-300"
                   >
                     <Activity className="w-3.5 h-3.5" />
                     <span>前往测试当前模型延迟</span>
@@ -410,14 +366,14 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
 
               {/* SECTION 1: TTS Model Selection */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-cyan-400" />
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Radio className="h-4 w-4 shrink-0 text-cyan-400" />
                     <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
                       1. 语音合成大模型 (Text-to-Speech Engine)
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                  <span className="max-w-full break-all rounded border border-cyan-800/50 bg-cyan-950/60 px-2 py-0.5 font-mono text-[11px] text-cyan-400">
                     当前选用: {config.ttsModel}
                   </span>
                 </div>
@@ -446,7 +402,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] font-mono text-neutral-400">{model.id}</span>
+                              <span className="break-all font-mono text-[11px] text-neutral-400">{model.id}</span>
                             </div>
 
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
@@ -484,14 +440,14 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
 
               {/* SECTION 2: Transcribe Model Selection */}
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-400" />
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Activity className="h-4 w-4 shrink-0 text-emerald-400" />
                     <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
                       2. 音频识别与情绪分析模型 (Speech-to-Text & Transcribe)
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                  <span className="max-w-full break-all rounded border border-emerald-800/50 bg-emerald-950/60 px-2 py-0.5 font-mono text-[11px] text-emerald-400">
                     当前选用: {config.transcribeModel}
                   </span>
                 </div>
@@ -515,7 +471,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs font-bold text-neutral-100">{model.name}</span>
                               </div>
-                              <span className="text-[10px] font-mono text-neutral-400">{model.id}</span>
+                              <span className="break-all font-mono text-[11px] text-neutral-400">{model.id}</span>
                             </div>
 
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
@@ -553,14 +509,14 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
 
               {/* SECTION 3: Reasoning Model Selection */}
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0 text-indigo-400" />
                     <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
                       3. 声学物理与编曲推理模型 (Acoustic & Music Reasoning)
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/50">
+                  <span className="max-w-full break-all rounded border border-indigo-800/50 bg-indigo-950/60 px-2 py-0.5 font-mono text-[11px] text-indigo-400">
                     当前选用: {config.reasoningModel}
                   </span>
                 </div>
@@ -584,7 +540,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs font-bold text-neutral-100">{model.name}</span>
                               </div>
-                              <span className="text-[10px] font-mono text-neutral-400">{model.id}</span>
+                              <span className="break-all font-mono text-[11px] text-neutral-400">{model.id}</span>
                             </div>
 
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
@@ -626,8 +582,8 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
           {/* TAB 1: Voice Personas（按 provider 分列，硬性约束 #5/#6） */}
           {activeTab === 'personas' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-neutral-200">
                     {provider === 'gemini' && 'Gemini 官方音色人格'}
                     {provider === 'qwen3Tts' && 'Qwen3-TTS 官方音色目录'}
@@ -641,8 +597,8 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     {provider === 'voiceProfile' && '声音角色工作台发布冻结的 Profile；合成前服务端校验 Manifest 与参考音频 Hash'}
                   </p>
                 </div>
-                <div className="text-xs font-mono text-neutral-400 bg-neutral-950 px-2.5 py-1 rounded-lg border border-neutral-800">
-                  当前默认: <span className="text-cyan-400 font-semibold">{selection.defaultVoice ?? '（目录未就绪）'}</span>
+                <div className="max-w-full break-all rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1 font-mono text-xs text-neutral-400">
+                  当前默认: <span className="font-semibold text-cyan-400">{selection.defaultVoice ?? '（目录未就绪）'}</span>
                 </div>
               </div>
 
@@ -682,9 +638,6 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                 </div>
               )}
 
-              {/* 本地引擎资源与能力（P0-B #19-23）：能力/指纹/占用来自 Worker 自述，可手动卸载 */}
-              <EngineResourcePanel onOpenModels={onOpenModels} />
-
               {selection.catalogUnavailable ? (
                 <div className="text-center py-10 px-4 bg-neutral-950/60 border border-neutral-800 rounded-xl space-y-2">
                   <AlertCircle className="w-6 h-6 text-amber-400 mx-auto" />
@@ -716,9 +669,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                         }`}
                       >
                         <div>
-                          <div className="flex items-start justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-neutral-100">{voice.name}</span>
+                          <div className="mb-1.5 flex flex-wrap items-start justify-between gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 break-words text-sm font-bold text-neutral-100">{voice.name}</span>
                               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-neutral-700 bg-neutral-900 text-neutral-300">
                                 {voice.gender} • {voice.tag}
                               </span>
@@ -768,9 +721,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                         </div>
 
                         {voice.previewPrompt && (
-                          <div className="pt-2 border-t border-neutral-800/60 flex items-center justify-between text-[10px] text-neutral-500">
+                          <div className="flex flex-wrap items-center justify-between gap-1 border-t border-neutral-800/60 pt-2 text-[11px] text-neutral-500">
                             <span>试听样本文本:</span>
-                            <span className="truncate max-w-[200px] text-neutral-400 italic">“{voice.previewPrompt}”</span>
+                            <span className="max-w-full truncate text-neutral-400 italic">“{voice.previewPrompt}”</span>
                           </div>
                         )}
                       </div>
@@ -795,9 +748,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                 
                 {/* Speed Slider */}
                 <div className="p-4 bg-neutral-950/50 rounded-xl border border-neutral-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-neutral-200">
+                      <Sliders className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
                       <span>基准语速倍率 (Speech Tempo)</span>
                     </label>
                     <span className="text-xs font-mono font-bold text-cyan-400 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
@@ -822,9 +775,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
 
                 {/* Temperature / Expressiveness Slider */}
                 <div className="p-4 bg-neutral-950/50 rounded-xl border border-neutral-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-neutral-200">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
                       <span>情感感染力 / 随机性 (Temperature)</span>
                     </label>
                     <span className="text-xs font-mono font-bold text-indigo-400 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
@@ -874,7 +827,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                   <label className="text-xs font-semibold text-neutral-200 block">
                     母带格式与音频规范 (Audio Master Spec)
                   </label>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                     <div className="p-2.5 bg-neutral-900 rounded-lg border border-neutral-800">
                       <span className="text-[10px] text-neutral-500 block">采样率 (Sample Rate)</span>
                       <span className="font-mono font-semibold text-cyan-400">24,000 Hz</span>
@@ -992,7 +945,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                 <label className="text-xs font-semibold text-neutral-200 block">
                   对谈呼吸与衔接节奏 (Dialogue Turn Pacing)
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {[
                     { id: 'tight', title: '紧凑敏捷', desc: '快速应答，适合争辩与脱口秀' },
                     { id: 'natural', title: '自然流畅', desc: '标准播客交流停顿感 (推荐)' },
@@ -1055,9 +1008,9 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                   placeholder="输入给语音大模型的全局声学与发音指令..."
                   className="w-full bg-neutral-950 border border-neutral-700/80 rounded-xl p-3 text-xs text-neutral-200 focus:outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30 leading-relaxed font-mono"
                 />
-                <div className="flex justify-between text-[11px] text-neutral-500">
-                  <span>提示: 指令将在每一次 TTS 发音生成前作为顶层 systemInstruction 传入。</span>
-                  <span>{config.customSystemInstruction.length} 字符</span>
+                <div className="flex flex-wrap justify-between gap-2 text-[11px] text-neutral-500">
+                  <span className="min-w-0">提示: 指令将在每一次 TTS 发音生成前作为顶层 systemInstruction 传入。</span>
+                  <span className="shrink-0">{config.customSystemInstruction.length} 字符</span>
                 </div>
               </div>
             </div>
@@ -1087,7 +1040,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     </div>
                     <span className="text-[10px] text-cyan-400 group-hover:underline">修改架构 &rarr;</span>
                   </div>
-                  <div className="font-mono text-xs text-cyan-300 font-bold">{config.ttsModel}</div>
+                  <div className="break-all font-mono text-xs font-bold text-cyan-300">{config.ttsModel}</div>
                   <p className="text-[10px] text-neutral-500 mt-1">原生单人/双人多角色音频生成</p>
                 </div>
 
@@ -1103,7 +1056,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     </div>
                     <span className="text-[10px] text-emerald-400 group-hover:underline">修改架构 &rarr;</span>
                   </div>
-                  <div className="font-mono text-xs text-emerald-300 font-bold">{config.transcribeModel}</div>
+                  <div className="break-all font-mono text-xs font-bold text-emerald-300">{config.transcribeModel}</div>
                   <p className="text-[10px] text-neutral-500 mt-1">高精度逐字稿与情绪/标签提取</p>
                 </div>
 
@@ -1119,15 +1072,15 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     </div>
                     <span className="text-[10px] text-indigo-400 group-hover:underline">修改架构 &rarr;</span>
                   </div>
-                  <div className="font-mono text-xs text-indigo-300 font-bold">{config.reasoningModel}</div>
+                  <div className="break-all font-mono text-xs font-bold text-indigo-300">{config.reasoningModel}</div>
                   <p className="text-[10px] text-neutral-500 mt-1">音效物理方程与律动母带编程</p>
                 </div>
               </div>
 
               {/* Diagnostic Button & Log */}
               <div className="p-4 bg-neutral-950/80 rounded-xl border border-neutral-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <h4 className="text-xs font-bold text-neutral-200">端到端声学生成链路自检</h4>
                     <p className="text-[11px] text-neutral-400">一键发起真实合成请求，测量后端模型 API 往返响应耗时与解码准确度</p>
                   </div>
@@ -1135,7 +1088,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                   <button
                     onClick={handleRunDiagnostic}
                     disabled={isTestingLatency}
-                    className="px-4 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                    className="flex shrink-0 items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/20 px-4 py-2 text-xs font-semibold text-cyan-300 transition-all hover:bg-cyan-500/30 active:scale-95 disabled:opacity-50"
                   >
                     {isTestingLatency ? (
                       <>
@@ -1162,33 +1115,36 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
                     ) : (
                       <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                     )}
-                    <div>
+                    <div className="min-w-0">
                       <div className="font-semibold">
                         {testResult.status === 'success' ? '自检通过：语音大模型链路畅通' : '自检提示'}
                       </div>
-                      <div className="text-[11px] mt-0.5 opacity-90 leading-relaxed font-mono">
+                      <div className="mt-0.5 break-words font-mono text-[11px] leading-relaxed opacity-90">
                         {testResult.message}
                       </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* 本地引擎资源与能力：集中放在链路自检，避免占用音色选择区域。 */}
+              <EngineResourcePanel onOpenModels={onOpenModels} />
             </div>
           )}
 
         </div>
 
         {/* Bottom Footer Actions */}
-        <div className="px-6 py-4 border-t border-neutral-800 bg-neutral-950 flex items-center justify-between">
-          <div className="text-xs text-neutral-400 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+        <div className="flex flex-col items-stretch gap-3 border-t border-neutral-800 bg-neutral-950 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-400">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
             <span>配置将自动同步至 AI 语音合成工坊与全局播放器</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex w-full shrink-0 items-center gap-3 sm:w-auto">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-neutral-700/80 transition-colors"
+              className="shrink-0 rounded-xl border border-neutral-700/80 px-4 py-2 text-xs font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
             >
               取消
             </button>
@@ -1197,7 +1153,7 @@ export const VoiceModelConfigModal: React.FC<VoiceModelConfigModalProps> = ({
               onClick={handleSave}
               disabled={selection.catalogUnavailable}
               title={selection.catalogUnavailable ? '当前引擎音色目录未就绪，暂不能保存音色配置（可先切回 Gemini 或等待引擎加载）' : undefined}
-              className="px-5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-lg shadow-cyan-950/50 hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-lg shadow-cyan-950/50 transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
             >
               {hasSaved ? (
                 <>
