@@ -11,6 +11,16 @@
   }
 }
 
+/* The supplied transparent logo has navy lettering; tint the full top row so
+   the original artwork stays legible without a box or image filter. */
+.studio-header {
+  background-color: rgba(13, 22, 40, 0.95);
+  background-image: linear-gradient(90deg, #9ebae8 0, #789acb 370px, #0d1628 670px);
+  background-position: top left;
+  background-repeat: no-repeat;
+  background-size: 100% 68px;
+}
+
 .player-aware-scroll {
   padding-bottom: 1.5rem;
 }

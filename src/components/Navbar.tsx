@@ -12,6 +12,7 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
+import { getDesktopBridge } from '../desktop/desktopBridge';
 
 export type StudioTab = 'library' | 'voice-identities' | 'tts' | 'sfx' | 'beat' | 'multitrack' | 'models';
 
@@ -74,6 +75,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCreatingVoiceIdentity = false,
   voiceModuleHint,
 }) => {
+  const isMacDesktop = getDesktopBridge() !== null && /Mac/.test(navigator.platform);
+
   const formatTotalTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -92,16 +95,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   ] as const;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#0d1628]/95 backdrop-blur-xl">
+    <header className="studio-header sticky top-0 z-40 border-b border-slate-800 backdrop-blur-xl">
       <div className="w-full px-4 sm:px-6">
-        <div className="flex min-h-[72px] items-center justify-between gap-3 py-2.5 sm:gap-5 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)_auto]">
-          <div className="flex shrink-0 items-center">
-            <div className="overflow-hidden rounded-lg bg-white ring-1 ring-white/15">
-              <img src="/voice-logo.png" alt="Voice" className="block h-11 w-auto sm:h-14" />
+        <div className={`flex min-h-[68px] items-center justify-between gap-3 py-2.5 sm:gap-5 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)_auto] ${isMacDesktop ? 'pl-20' : ''}`}>
+          <div className="flex min-w-0 flex-1 items-center lg:flex-none">
+            <div className="relative h-10 w-full max-w-[300px] overflow-hidden sm:h-12">
+              <img src="/voice-logo.png" alt="Semovix Voice" className="absolute left-0 top-1/2 block w-full -translate-y-1/2" />
             </div>
           </div>
 
-          <div className="hidden min-w-0 max-w-[390px] flex-1 md:block">
+          <div className="hidden min-w-0 w-full max-w-[390px] lg:block">
             <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
           </div>
 
@@ -122,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        <div className="pb-2 md:hidden">
+        <div className="pb-2 lg:hidden">
           <SearchField searchQuery={searchQuery} onSearchChange={onSearchChange} placeholder={currentTab === 'voice-identities' ? '搜索声音角色、品牌、用途、标签…' : undefined} />
         </div>
 
