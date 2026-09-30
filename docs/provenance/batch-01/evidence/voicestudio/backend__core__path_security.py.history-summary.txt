@@ -1,0 +1,8 @@
+# VoiceStudio 候选文件历史（仅 Git 元数据）
+# command: git -C <voicestudio-repo> log --follow --reverse -- <path>
+path: backend/core/path_security.py
+first_commit: 3e6679c03e7c370b3c7b8cb626b4ba17e22707d4 (2026-08-09T21:16:55Z)
+pre_semovix_first_commit: 3b64d317ae06d7c75bb0d0c2c5219098b9f12506 (2026-08-20T06:08:28+05:30)
+current_commit: 08a1592e3cb9b4c36beef5fa3185ec2313bb1fea
+semovix 首次引入: fb76cdf33add210a9161e3e14376adf119c8b037 (2026-09-29T14:56:49+08:00)
+time_order: VoiceStudio 表达先于 Semovix 首次引入

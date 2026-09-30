@@ -1,0 +1,8 @@
+# 首次引入提交（--diff-filter=A --follow）
+# command: git -C <semovix-repo> log --follow --diff-filter=A --reverse -- <path>
+path: src/desktop/fileDialogs.ts
+first_add_commit: 8233f23b2bff51602df72fb755dadbf7bb82f246
+first_history_commit: 8233f23b2bff51602df72fb755dadbf7bb82f246
+first_author: jinguoxing <jinguoxing_net@163.com>
+first_authored_at: 2026-09-28T22:13:55+08:00
+subject: feat(desktop): wire import/export flows to native file dialogs (P0-A #12)

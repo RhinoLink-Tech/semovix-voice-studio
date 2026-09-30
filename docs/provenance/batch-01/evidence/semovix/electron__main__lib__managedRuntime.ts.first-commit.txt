@@ -1,0 +1,8 @@
+# 首次引入提交（--diff-filter=A --follow）
+# command: git -C <semovix-repo> log --follow --diff-filter=A --reverse -- <path>
+path: electron/main/lib/managedRuntime.ts
+first_add_commit: 0545af162bb4a7bc9bef0d760de819f740c6110f
+first_history_commit: 0545af162bb4a7bc9bef0d760de819f740c6110f
+first_author: jinguoxing <jinguoxing_net@163.com>
+first_authored_at: 2026-09-29T17:15:39+08:00
+subject: feat(desktop): managed uv Python runtime with locks, repair and rebuild (P1 #31)
